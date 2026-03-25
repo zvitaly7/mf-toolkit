@@ -1,0 +1,22 @@
+{
+  "name": "mf-toolkit",
+  "private": true,
+  "description": "Microfrontend Toolkit — a modular collection of build-time and runtime tools for microfrontend architectures.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
