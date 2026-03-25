@@ -13,7 +13,7 @@ Statically analyzes your source code, detects which icons are actually imported,
 
 | | |
 |---|---|
-| **Zero parser dependencies** | No Babel, no AST — regex-based analyzer using only Node.js built-ins |
+| **Zero parser dependencies** | Regex-based analyzer by default; optional AST parsers (TypeScript, Babel) |
 | **17 KB** package size | Only one dependency: [SVGO](https://github.com/svg/svgo) for SVG optimization |
 | **Smart matching** | PascalCase, kebab-case, digits, subdirectories — all resolved automatically |
 | **Framework-agnostic** | Works with any bundler or standalone. Generated output is plain TypeScript |
@@ -212,6 +212,12 @@ interface SpritePluginOptions {
   // Generate sprite-manifest.json alongside the sprite file.
   // Useful for CI pipelines, debugging, and build reports. Default: false
   manifest?: boolean;
+
+  // Parser strategy for analyzing imports.
+  // 'regex' (default) — zero-dep, covers ~95% of patterns
+  // 'typescript' — uses TypeScript Compiler API (requires `typescript`)
+  // 'babel' — uses @babel/parser (requires `@babel/parser`)
+  parser?: 'regex' | 'typescript' | 'babel';
 }
 ```
 
@@ -428,20 +434,58 @@ await generateSprite({
 });
 ```
 
-## Why Regex Instead of AST?
+## Parser Strategies
 
-Most static analysis tools use a full JavaScript parser (`@babel/parser`, `acorn`, etc.) to build an Abstract Syntax Tree. We intentionally chose **regex-based analysis** instead:
+By default, the plugin uses a **regex-based analyzer** — zero dependencies, fast, covers the vast majority of real-world import patterns. If you need 100% syntactic accuracy, you can opt into an AST-based parser.
 
-| | AST (`@babel/parser`) | Regex (this plugin) |
+### `parser: 'regex'` (default)
+
+No extra dependencies. Covers static imports, dynamic `import()`, `require()`, `.then()` destructuring, `React.lazy` patterns, and `await import()`.
+
+| | Regex (default) | AST parsers |
 |---|---|---|
-| **Install size** | +5.1 MB (201 files) | +0 (Node.js built-ins) |
-| **Accuracy** | 100% of syntax | ~95% of real-world patterns |
-| **Speed** | Parse entire file | Scan only import lines |
-| **Dependencies** | `@babel/parser`, `@babel/types` | None |
-
-The tradeoff is intentional: we cover static imports, dynamic `import()`, `require()`, `.then()` destructuring, `React.lazy` patterns, and `await import()` — which accounts for the vast majority of icon usage in real projects. The rare edge cases (indirect variable assignment, `Promise.all` batching) are documented and produce warnings rather than silent failures.
+| **Install size** | +0 (Node.js built-ins) | +5 MB (`@babel/parser`) or +0 if `typescript` already installed |
+| **Accuracy** | ~95% of real-world patterns | 100% of syntax |
+| **Speed** | Scan only import lines | Parse entire file |
+| **Dependencies** | None | Optional peer dependency |
 
 > **Tested against a production microfrontend with 319 available icons: identical results (38/38 matched) compared to a Babel-based analyzer, with zero additional dependencies.**
+
+### `parser: 'typescript'`
+
+Uses the TypeScript Compiler API (`ts.createSourceFile`) for full syntactic parsing. If you already have `typescript` in your project, this adds no extra install size.
+
+```bash
+npm install -D typescript
+```
+
+```js
+new MfSpriteWebpackPlugin({
+  // ...
+  parser: 'typescript',
+});
+```
+
+### `parser: 'babel'`
+
+Uses `@babel/parser` for full syntactic parsing. Supports all JS/TS/JSX/TSX syntax including decorators.
+
+```bash
+npm install -D @babel/parser
+```
+
+```js
+new MfSpriteWebpackPlugin({
+  // ...
+  parser: 'babel',
+});
+```
+
+### Which parser to choose?
+
+- **regex** — you don't need to install anything, and it works for the vast majority of codebases. Start here.
+- **typescript** — if you already have `typescript` installed and want full accuracy at no extra cost.
+- **babel** — if your codebase uses Babel-specific syntax or you prefer Babel's parser.
 
 ## License
 
