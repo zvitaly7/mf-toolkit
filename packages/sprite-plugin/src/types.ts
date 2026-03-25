@@ -1,3 +1,17 @@
+/**
+ * Parser strategy for analyzing imports.
+ * - 'regex' (default): zero-dependency regex-based parser
+ * - 'typescript': uses TypeScript Compiler API (requires `typescript` installed)
+ * - 'babel': uses @babel/parser (requires `@babel/parser` installed)
+ */
+export type ParserStrategy = 'regex' | 'typescript' | 'babel';
+
+export type ParseFunction = (
+  filePath: string,
+  iconPattern: RegExp,
+  extractNamedImports: boolean,
+) => Promise<IconUsage[]>;
+
 export interface SpritePluginOptions {
   /** Directory containing source SVG icons */
   iconsDir: string;
@@ -60,6 +74,12 @@ export interface SpritePluginOptions {
    * @default false
    */
   manifest?: boolean;
+
+  /**
+   * Parser strategy for analyzing imports.
+   * @default 'regex'
+   */
+  parser?: ParserStrategy;
 }
 
 export interface AnalyzerOptions {
@@ -74,6 +94,9 @@ export interface AnalyzerOptions {
 
   /** File extensions to scan */
   extensions?: string[];
+
+  /** Parser strategy for analyzing imports */
+  parser?: ParserStrategy;
 }
 
 export interface IconUsage {

@@ -43,7 +43,16 @@
   "dependencies": {
     "svgo": "^4.0.1"
   },
+  "peerDependencies": {
+    "typescript": ">=4.7",
+    "@babel/parser": ">=7.20"
+  },
+  "peerDependenciesMeta": {
+    "typescript": { "optional": true },
+    "@babel/parser": { "optional": true }
+  },
   "devDependencies": {
+    "@babel/parser": "^7.20.0",
     "@types/node": "^25.4.0",
     "typescript": "^5.9.3"
   }

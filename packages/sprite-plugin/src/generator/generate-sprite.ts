@@ -27,6 +27,7 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
     verbose = false,
     skipIfEmpty = false,
     manifest: writeManifest = false,
+    parser,
   } = options;
 
   // Step 1: Find which icons are used in source code
@@ -35,6 +36,7 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
     importPattern,
     extractNamedImports,
     extensions,
+    parser,
   });
 
   const iconNames = usages.map((u) => u.name);
