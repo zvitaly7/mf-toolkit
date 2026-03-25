@@ -135,6 +135,26 @@ export async function parseFileImports(
       if (!iconMatch) continue;
 
       if (extractNamed) {
+        // Warn about namespace imports — not statically analyzable
+        if (/import\s+\*\s+as\s+/.test(match[0])) {
+          console.warn(
+            `[sprite] Namespace import is not statically analyzable: ${match[0].trim()}\n` +
+            `  at ${filePath}:${lineIndex + 1}\n` +
+            `  Refactor to named imports: import { Icon1, Icon2 } from '${moduleSpecifier}'`,
+          );
+          continue;
+        }
+
+        // Warn about export * — not statically analyzable
+        if (/export\s+\*\s+from/.test(match[0])) {
+          console.warn(
+            `[sprite] Wildcard re-export is not statically analyzable: ${match[0].trim()}\n` +
+            `  at ${filePath}:${lineIndex + 1}\n` +
+            `  Refactor to named re-exports: export { Icon1, Icon2 } from '${moduleSpecifier}'`,
+          );
+          continue;
+        }
+
         // Named import mode: extract icon names from { ... }
         // If importPattern has a capture group, use it as a path prefix
         const prefix = iconMatch[1] || '';

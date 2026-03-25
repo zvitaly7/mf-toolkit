@@ -194,6 +194,10 @@ interface SpritePluginOptions {
 
   // Don't generate a file if no icons are found. Default: false
   skipIfEmpty?: boolean;
+
+  // Generate sprite-manifest.json alongside the sprite file.
+  // Useful for CI pipelines, debugging, and build reports. Default: false
+  manifest?: boolean;
 }
 ```
 
@@ -302,6 +306,66 @@ export function injectSprite(): void {
 
 Multiple calls are also safe — the sprite is injected only once.
 
+## Build Manifest
+
+Enable `manifest: true` to generate a `sprite-manifest.json` alongside the sprite file:
+
+```js
+await generateSprite({
+  // ...
+  manifest: true,
+});
+```
+
+The manifest contains a machine-readable report of what was generated:
+
+```json
+{
+  "generatedAt": "2025-03-25T12:00:00.000Z",
+  "iconsCount": 34,
+  "missingCount": 3,
+  "icons": [
+    { "name": "cart", "sources": ["src/components/Cart.tsx:5"] },
+    { "name": "ui/arrow", "sources": ["src/components/Nav.tsx:2"] }
+  ],
+  "missing": ["PacmanLazy", "SplitLazy", "Coupon2"]
+}
+```
+
+Useful for CI pipelines (fail if too many icons are missing), build dashboards, and debugging why a particular icon is or isn't in the sprite.
+
+## Unanalyzable Import Warnings
+
+When using `extractNamedImports: true`, the plugin warns about import patterns that cannot be statically analyzed:
+
+```
+[sprite] Namespace import is not statically analyzable: import * as Icons from '@ui/Icon/ui'
+  at src/components/App.tsx:3
+  Refactor to named imports: import { Icon1, Icon2 } from '@ui/Icon/ui'
+
+[sprite] Wildcard re-export is not statically analyzable: export * from '@ui/Icon/ui'
+  at src/index.ts:5
+  Refactor to named re-exports: export { Icon1, Icon2 } from '@ui/Icon/ui'
+```
+
+These warnings help you find and fix patterns that would cause icons to be silently excluded from the sprite.
+
+## SVG ID Collision Protection
+
+When multiple icons use the same internal IDs (common with design tool exports — e.g., `id="gradient1"`, `id="clip0"`), they would conflict inside a single sprite. The plugin automatically prefixes all internal IDs:
+
+```xml
+<!-- Before: two icons both use id="grad1" -->
+<symbol id="cart"><circle fill="url(#grad1)" />...</symbol>
+<symbol id="star"><rect fill="url(#grad1)" />...</symbol>
+
+<!-- After: each icon gets a unique prefix -->
+<symbol id="cart"><circle fill="url(#cart--grad1)" />...</symbol>
+<symbol id="star"><rect fill="url(#star--grad1)" />...</symbol>
+```
+
+This applies to `id`, `url(#...)`, `href="#..."`, and `xlink:href="#..."` references.
+
 ## Programmatic API
 
 For advanced use cases, the analyzer and generator can be used independently:
@@ -330,6 +394,7 @@ await generateSprite({
   importPattern: /@ui\/Icon\/(.+)/,
   extractNamedImports: true,
   output: './src/generated/sprite.ts',
+  manifest: true,
   verbose: true,
 });
 ```

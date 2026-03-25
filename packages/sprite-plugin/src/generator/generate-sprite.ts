@@ -1,8 +1,16 @@
 import { writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { SpritePluginOptions } from '../types.js';
 import { analyzeImports } from '../analyzer/analyze-imports.js';
 import { buildSprite } from './build-sprite.js';
+
+export interface SpriteManifest {
+  generatedAt: string;
+  iconsCount: number;
+  missingCount: number;
+  icons: { name: string; sources: string[] }[];
+  missing: string[];
+}
 
 /**
  * Main entry point: analyzes source code for icon usage,
@@ -18,6 +26,7 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
     extensions,
     verbose = false,
     skipIfEmpty = false,
+    manifest: writeManifest = false,
   } = options;
 
   // Step 1: Find which icons are used in source code
@@ -56,6 +65,33 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
 
   const outputContent = generateOutputFile(svg, included);
   await writeFile(output, outputContent, 'utf-8');
+
+  // Step 4: Write manifest JSON (optional, next to the sprite file)
+  if (writeManifest) {
+    const manifest: SpriteManifest = {
+      generatedAt: new Date().toISOString(),
+      iconsCount: included.length,
+      missingCount: missing.length,
+      icons: included.map((name) => ({
+        name,
+        sources: usages
+          .filter((u) => {
+            const uLower = u.name.toLowerCase();
+            const nLower = name.toLowerCase();
+            return uLower === nLower || uLower.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() === nLower;
+          })
+          .map((u) => `${u.source}:${u.line}`),
+      })),
+      missing,
+    };
+
+    const manifestPath = join(dirname(output), 'sprite-manifest.json');
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+
+    if (verbose) {
+      console.log(`[sprite] Manifest: ${manifestPath}`);
+    }
+  }
 
   if (verbose) {
     console.log(`[sprite] Written to ${output} (${included.length} icons)`);

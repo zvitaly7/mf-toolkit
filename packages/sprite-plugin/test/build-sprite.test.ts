@@ -82,4 +82,14 @@ describe('buildSprite', () => {
     expect(result.svg).toMatch(/^<svg[^>]*>/);
     expect(result.svg).toMatch(/<\/svg>$/);
   });
+
+  it('prefixes internal IDs to prevent collisions between icons', async () => {
+    const result = await buildSprite(ICONS_DIR, ['gradient-icon']);
+
+    // Internal ID "grad1" should be prefixed with the symbol ID
+    expect(result.svg).toContain('id="gradient_icon--');
+    expect(result.svg).toContain('url(#gradient_icon--');
+    // The symbol ID itself should NOT be prefixed
+    expect(result.svg).toContain('id="gradient-icon"');
+  });
 });

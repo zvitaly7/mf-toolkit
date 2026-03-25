@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { analyzeImports } from '../src/analyzer/analyze-imports.js';
 import { buildSprite } from '../src/generator/build-sprite.js';
+import { writeFile, mkdir, rm } from 'node:fs/promises';
 
 const FIXTURES_SRC = join(import.meta.dirname, 'fixtures/src');
 const ICONS_DIR = join(import.meta.dirname, 'fixtures/icons');
@@ -89,5 +90,57 @@ describe('PascalCase to kebab-case matching', () => {
 
     expect(result.included).toHaveLength(1);
     expect(result.included).toContain('cart');
+  });
+});
+
+describe('unanalyzable import warnings', () => {
+  const TMP_DIR = join(import.meta.dirname, 'fixtures/tmp-warn');
+
+  afterEach(async () => {
+    await rm(TMP_DIR, { recursive: true, force: true });
+  });
+
+  it('warns about import * in extractNamedImports mode', async () => {
+    await mkdir(TMP_DIR, { recursive: true });
+    await writeFile(
+      join(TMP_DIR, 'star-import.ts'),
+      `import * as Icons from '@ui/Icon/ui';\n`,
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await analyzeImports({
+      sourceDirs: [TMP_DIR],
+      importPattern: /@ui\/Icon\/(.+)/,
+      extractNamedImports: true,
+      extensions: ['.ts'],
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Namespace import is not statically analyzable'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('warns about export * in extractNamedImports mode', async () => {
+    await mkdir(TMP_DIR, { recursive: true });
+    await writeFile(
+      join(TMP_DIR, 'star-export.ts'),
+      `export * from '@ui/Icon/ui';\n`,
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await analyzeImports({
+      sourceDirs: [TMP_DIR],
+      importPattern: /@ui\/Icon\/(.+)/,
+      extractNamedImports: true,
+      extensions: ['.ts'],
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Wildcard re-export is not statically analyzable'),
+    );
+    warnSpy.mockRestore();
   });
 });

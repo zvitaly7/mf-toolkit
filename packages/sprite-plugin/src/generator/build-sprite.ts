@@ -16,10 +16,19 @@ function svgToSymbol(id: string, svg: string): SvgSymbol {
   const viewBox = viewBoxMatch ? viewBoxMatch[1] : '0 0 24 24';
 
   // Extract content between <svg> and </svg>
-  const inner = svg
+  let inner = svg
     .replace(/<svg[^>]*>/, '')
     .replace(/<\/svg>/, '')
     .trim();
+
+  // Prefix internal IDs to prevent collisions between icons
+  // e.g., two icons both using id="gradient1" would conflict in the same sprite
+  const safePrefix = id.replace(/[^a-zA-Z0-9]/g, '_') + '--';
+  inner = inner
+    .replace(/\bid="([^"]+)"/g, `id="${safePrefix}$1"`)
+    .replace(/url\(#([^)]+)\)/g, `url(#${safePrefix}$1)`)
+    .replace(/href="#([^"]+)"/g, `href="#${safePrefix}$1"`)
+    .replace(/xlink:href="#([^"]+)"/g, `xlink:href="#${safePrefix}$1"`);
 
   const content = `<symbol id="${id}" viewBox="${viewBox}">${inner}</symbol>`;
   return { id, content };

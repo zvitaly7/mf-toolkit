@@ -53,6 +53,13 @@ export interface SpritePluginOptions {
 
   /** Skip generation if no icons are found */
   skipIfEmpty?: boolean;
+
+  /**
+   * Generate a sprite-manifest.json alongside the sprite file.
+   * Useful for CI pipelines, debugging, and build reports.
+   * @default false
+   */
+  manifest?: boolean;
 }
 
 export interface AnalyzerOptions {

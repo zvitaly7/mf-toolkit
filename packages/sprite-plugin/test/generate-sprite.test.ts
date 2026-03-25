@@ -123,4 +123,25 @@ describe('generateSprite', () => {
     expect(content).toContain('let injected = false');
     expect(content).toContain('injected = true');
   });
+
+  it('generates a sprite-manifest.json when manifest option is enabled', async () => {
+    await generateSprite({
+      iconsDir: join(FIXTURES, 'icons'),
+      sourceDirs: [join(FIXTURES, 'src')],
+      importPattern: /@my-ui\/icons\/(.+)/,
+      output: OUTPUT_FILE,
+      extensions: ['.tsx'],
+      manifest: true,
+    });
+
+    const manifestPath = join(OUTPUT_DIR, 'sprite-manifest.json');
+    const raw = await readFile(manifestPath, 'utf-8');
+    const manifest = JSON.parse(raw);
+
+    expect(manifest.iconsCount).toBeGreaterThan(0);
+    expect(manifest.generatedAt).toBeDefined();
+    expect(manifest.icons).toBeInstanceOf(Array);
+    expect(manifest.icons.length).toBe(manifest.iconsCount);
+    expect(manifest.missing).toBeInstanceOf(Array);
+  });
 });
