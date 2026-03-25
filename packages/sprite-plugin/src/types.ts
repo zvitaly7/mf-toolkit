@@ -6,17 +6,25 @@ export interface SpritePluginOptions {
   sourceDirs: string[];
 
   /**
-   * Regex pattern to detect icon imports in source code.
+   * Regex pattern to match icon imports. Applied to the module specifier
+   * (the string after `from` or inside `import()`).
    * Must contain a capture group for the icon name.
    *
    * @example
    * // Matches: import { Cart } from '@my-ui/icons/cart'
-   * /from ['"]@my-ui\/icons\/(.+)['"]/
+   * // The module specifier is '@my-ui/icons/cart'
+   * /@my-ui\/icons\/(.+)/
    */
   importPattern: RegExp;
 
   /** Output file path for the generated sprite */
   output: string;
+
+  /**
+   * File extensions to scan for imports.
+   * @default ['.ts', '.tsx', '.js', '.jsx']
+   */
+  extensions?: string[];
 
   /** Log detailed information during generation */
   verbose?: boolean;
@@ -34,20 +42,6 @@ export interface AnalyzerOptions {
 
   /** File extensions to scan */
   extensions?: string[];
-}
-
-export interface GeneratorOptions {
-  /** Directory containing source SVG icons */
-  iconsDir: string;
-
-  /** Output file path for the generated sprite */
-  output: string;
-
-  /** List of icon names to include (from analyzer) */
-  icons: string[];
-
-  /** Log detailed information */
-  verbose?: boolean;
 }
 
 export interface IconUsage {

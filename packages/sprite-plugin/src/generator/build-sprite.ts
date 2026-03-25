@@ -57,9 +57,13 @@ export async function buildSprite(
   }
 
   // Build a map: normalized name → file path
+  // If multiple files have the same basename, the last one wins
   const fileMap = new Map<string, string>();
   for (const file of allFiles) {
     const id = fileNameToId(file);
+    if (verbose && fileMap.has(id)) {
+      console.warn(`[sprite] Duplicate icon name "${id}": ${fileMap.get(id)} will be overwritten by ${join(iconsDir, file)}`);
+    }
     fileMap.set(id, join(iconsDir, file));
   }
 

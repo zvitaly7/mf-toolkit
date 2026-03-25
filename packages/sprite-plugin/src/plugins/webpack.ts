@@ -27,7 +27,7 @@ const PLUGIN_NAME = 'MfSpritePlugin';
  *     new MfSpriteWebpackPlugin({
  *       iconsDir: './src/assets/icons',
  *       sourceDirs: ['./src'],
- *       importPattern: /from ['"]@my-ui\/icons\/(.+)['"]/,
+ *       importPattern: /@my-ui\/icons\/(.+)/,
  *       output: './src/generated/sprite.ts',
  *     }),
  *   ],
