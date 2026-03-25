@@ -48,17 +48,32 @@ function toKebabCase(name: string): string {
 /**
  * Generates candidate names for matching an icon name to a file.
  * Tries multiple conventions: exact, lowercase, kebab-case.
+ * Supports prefixed names like "ui/ChevronRight".
  *
- * "ChevronRight" → ["chevronright", "chevron-right"]
- * "cart" → ["cart"]
+ * "ChevronRight"    → ["chevronright", "chevron-right"]
+ * "ui/ChevronRight" → ["ui/chevronright", "ui/chevron-right"]
+ * "cart"            → ["cart"]
  */
 function nameCandidates(name: string): string[] {
-  const lower = name.toLowerCase();
-  const kebab = toKebabCase(name);
-  const candidates = [lower];
-  if (kebab !== lower) {
-    candidates.push(kebab);
+  const slashIndex = name.lastIndexOf('/');
+
+  if (slashIndex === -1) {
+    // No prefix — flat matching
+    const lower = name.toLowerCase();
+    const kebab = toKebabCase(name);
+    const candidates = [lower];
+    if (kebab !== lower) candidates.push(kebab);
+    return candidates;
   }
+
+  // Has prefix (e.g., "ui/ChevronRight") — preserve prefix for path matching
+  const prefix = name.substring(0, slashIndex).toLowerCase();
+  const iconName = name.substring(slashIndex + 1);
+  const lower = iconName.toLowerCase();
+  const kebab = toKebabCase(iconName);
+
+  const candidates = [`${prefix}/${lower}`];
+  if (kebab !== lower) candidates.push(`${prefix}/${kebab}`);
   return candidates;
 }
 
@@ -87,14 +102,29 @@ export async function buildSprite(
   }
 
   // Build a map: normalized name → file path
-  // If multiple files have the same basename, the last one wins
+  // Entries are indexed by both basename and relative path (with subdirectory)
+  // e.g., "ui/chevron-right.svg" creates:
+  //   "chevron-right" → full path  (basename, last one wins if duplicates)
+  //   "ui/chevron-right" → full path  (with subdirectory, always unique)
   const fileMap = new Map<string, string>();
   for (const file of allFiles) {
+    const fullPath = join(iconsDir, file);
     const id = fileNameToId(file);
-    if (verbose && fileMap.has(id)) {
-      console.warn(`[sprite] Duplicate icon name "${id}": ${fileMap.get(id)} will be overwritten by ${join(iconsDir, file)}`);
+
+    // Relative path with subdirectory (e.g., "ui/chevron-right")
+    const relativeId = file
+      .replace(/\\/g, '/')
+      .replace(extname(file), '')
+      .toLowerCase();
+
+    if (relativeId !== id) {
+      fileMap.set(relativeId, fullPath);
     }
-    fileMap.set(id, join(iconsDir, file));
+
+    if (verbose && fileMap.has(id) && fileMap.get(id) !== fullPath) {
+      console.warn(`[sprite] Duplicate icon name "${id}": use path prefix to disambiguate (e.g., "ui/${id}")`);
+    }
+    fileMap.set(id, fullPath);
   }
 
   // Match requested icons to files

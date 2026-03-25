@@ -136,10 +136,12 @@ export async function parseFileImports(
 
       if (extractNamed) {
         // Named import mode: extract icon names from { ... }
+        // If importPattern has a capture group, use it as a path prefix
+        const prefix = iconMatch[1] || '';
         const names = extractNamedImports(match[0]);
         for (const name of names) {
           results.push({
-            name,
+            name: prefix ? `${prefix}/${name}` : name,
             source: filePath,
             line: lineIndex + 1,
           });

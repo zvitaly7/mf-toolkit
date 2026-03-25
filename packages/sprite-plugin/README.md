@@ -130,6 +130,36 @@ importPattern: /@company\/icons\/(.+)/
 importPattern: /\.\/icons\/(.+)\.svg/
 ```
 
+### `extractNamedImports` — Named Import Mode
+
+Some codebases organize icons by category, with each category as a separate module:
+
+```ts
+import { Cart, Search } from '@ui/Icon/common';
+import { ChevronRight } from '@ui/Icon/ui';
+import { Arrow } from '@ui/Icon/payment';
+```
+
+In this pattern, the **icon name comes from the import specifier** (`Cart`, `Search`), not from the module path. Enable `extractNamedImports` to handle this:
+
+```js
+new MfSpriteWebpackPlugin({
+  iconsDir: './src/assets/icons',
+  sourceDirs: ['./src'],
+  importPattern: /@ui\/Icon\/(.+)/,
+  extractNamedImports: true,
+  output: './src/generated/sprite.ts',
+});
+```
+
+When `extractNamedImports` is enabled:
+- The plugin extracts individual names from `{ Cart, Search }` instead of using the module path
+- If `importPattern` has a **capture group**, the captured value is used as a **category prefix**: `Cart` from `@ui/Icon/common` becomes `common/Cart`
+- This prefix allows disambiguating same-name icons in different subdirectories (e.g., `ui/arrow.svg` vs `payment/arrow.svg`)
+- If the pattern has **no capture group**, icon names are used as-is without a prefix
+- `type` imports are automatically excluded
+- Aliases (`import { Cart as MyCart }`) use the original name (`Cart`), not the alias
+
 ### All Options
 
 ```ts
@@ -150,6 +180,12 @@ interface SpritePluginOptions {
   // Directory is created automatically if it doesn't exist.
   output: string;
 
+  // Extract icon names from import specifiers instead of module paths.
+  // When enabled, `import { Cart } from '@ui/icons/common'` extracts "Cart".
+  // If importPattern has a capture group, it's used as a category prefix
+  // (e.g., "common/Cart"). Default: false
+  extractNamedImports?: boolean;
+
   // File extensions to scan. Default: ['.ts', '.tsx', '.js', '.jsx']
   extensions?: string[];
 
@@ -163,14 +199,28 @@ interface SpritePluginOptions {
 
 ### Icon Name Matching
 
-The plugin matches the captured icon name (from `importPattern`) to SVG filenames in `iconsDir`:
+The plugin matches icon names to SVG filenames in `iconsDir` using multiple strategies:
 
+**Basic matching** (case-insensitive):
 ```
-Captured name: "cart"     → looks for: cart.svg
-Captured name: "ui/cart"  → looks for: cart.svg (basename only)
+"cart"     → cart.svg
+"CartIcon" → cart-icon.svg (PascalCase → kebab-case)
 ```
 
-Matching is **case-insensitive**: `CartIcon` and `carticon` both resolve to `cart.svg`.
+**Path-based matching** (with `extractNamedImports` and a capture group):
+```
+icons/
+├── ui/
+│   └── arrow.svg      ← matched by "ui/Arrow"
+├── payment/
+│   └── arrow.svg      ← matched by "payment/Arrow"
+├── cart.svg            ← matched by "cart"
+└── search.svg          ← matched by "search"
+```
+
+When icons have the same filename in different subdirectories, the category prefix from the capture group disambiguates them. Each icon gets a unique symbol ID in the sprite (`id="ui/arrow"`, `id="payment/arrow"`).
+
+**Without a prefix**, the plugin falls back to basename matching. If multiple files share the same name, the last one found wins — use prefixes to avoid ambiguity.
 
 If an icon is imported but no matching SVG file exists, the plugin logs a warning and continues — it won't break your build.
 
@@ -201,7 +251,7 @@ import { CartIcon } from '@ui/icons/cart';
 import CartIcon from '@ui/icons/cart';
 import * as CartIcon from '@ui/icons/cart';
 
-// Type imports (TypeScript)
+// Type imports (TypeScript) — ignored, not real usage
 import type { CartIcon } from '@ui/icons/cart';
 
 // Re-exports
@@ -219,6 +269,22 @@ import {
   CartIcon,
   SearchIcon,
 } from '@ui/icons/cart';
+```
+
+With `extractNamedImports: true`, the analyzer also extracts individual names from destructured imports:
+
+```ts
+// Each name becomes a separate icon
+import { Cart, Search, Star } from '@ui/Icon/common';
+// → icons: common/Cart, common/Search, common/Star
+
+// Aliases use the original name
+import { Cart as MyCart } from '@ui/Icon/common';
+// → icon: common/Cart (not MyCart)
+
+// Type imports are excluded
+import { type CartProps, Cart } from '@ui/Icon/common';
+// → icon: common/Cart (CartProps is skipped)
 ```
 
 Imports inside comments (`//` and `/* */`) are correctly ignored.
@@ -246,19 +312,23 @@ import { analyzeImports, generateSprite } from '@mf-toolkit/sprite-plugin';
 // Step 1: Find which icons are used
 const usages = await analyzeImports({
   sourceDirs: ['./src'],
-  importPattern: /@ui\/icons\/(.+)/,
+  importPattern: /@ui\/Icon\/(.+)/,
+  extractNamedImports: true,
 });
 
 console.log(`Found ${usages.length} icons:`);
 for (const usage of usages) {
   console.log(`  ${usage.name} ← ${usage.source}:${usage.line}`);
 }
+// Output: common/Cart ← src/app.tsx:3
+//         ui/Arrow    ← src/nav.tsx:1
 
 // Step 2: Generate the sprite (or do something else with the list)
 await generateSprite({
   iconsDir: './src/assets/icons',
   sourceDirs: ['./src'],
-  importPattern: /@ui\/icons\/(.+)/,
+  importPattern: /@ui\/Icon\/(.+)/,
+  extractNamedImports: true,
   output: './src/generated/sprite.ts',
   verbose: true,
 });
