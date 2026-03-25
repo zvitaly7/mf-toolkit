@@ -31,10 +31,14 @@ module.exports = {
 ```
 
 **What it does:**
-- Scans your code for icon imports (static, dynamic, `require`, `import type`, re-exports)
-- Matches them to SVG files in your icons directory
+- Scans your code for icon imports (static, dynamic, `require`, re-exports, `import().then()`)
+- Supports both path-based (`import X from '@ui/icons/cart'`) and named import (`import { Cart } from '@ui/Icon/ui'`) modes
+- Matches PascalCase imports to kebab-case files (`ChevronRight` → `chevron-right.svg`)
+- Disambiguates same-name icons across subdirectories (`ui/arrow.svg` vs `payment/arrow.svg`)
 - Optimizes each SVG with [SVGO](https://github.com/svg/svgo) and replaces hardcoded colors with `currentColor`
+- Prefixes internal SVG IDs to prevent gradient/mask collisions in the sprite
 - Generates a TypeScript module that injects the sprite into the DOM
+- Optional JSON manifest for CI pipelines and build reports
 - Runs automatically before each build and on watch-mode rebuilds
 
 **Zero runtime dependencies** besides SVGO. The analyzer uses no external parsers — just Node.js built-ins.

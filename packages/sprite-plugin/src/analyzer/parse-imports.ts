@@ -96,6 +96,61 @@ function extractNamedImports(importStatement: string): string[] {
 }
 
 /**
+ * Extracts icon names from dynamic import patterns.
+ * Looks at the code after `import('...')` to find how the result is used.
+ *
+ * Supported patterns:
+ *   import('mod').then(({ Name1, Name2 }) => ...)
+ *   import('mod').then((m) => ({ default: m.Name }))
+ *   import('mod').then(m => m.Name)
+ *   const { Name1, Name2 } = await import('mod')
+ */
+function extractDynamicImportNames(source: string, importStartIndex: number, afterImportIndex: number): string[] {
+  const rest = source.substring(afterImportIndex, afterImportIndex + 500);
+
+  // Pattern 1: .then(({ Name1, Name2 }) => ...)
+  const destructuredThen = rest.match(/\.then\s*\(\s*\(\s*\{([^}]+)\}\s*\)/);
+  if (destructuredThen) {
+    return destructuredThen[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !s.startsWith('type '))
+      .map((s) => s.split(/\s+as\s+/)[0].trim())
+      .filter((s) => s.length > 0);
+  }
+
+  // Pattern 2: .then((m) => ({ default: m.Name })) or .then(m => ({ default: m.Name }))
+  // Also covers: .then(m => m.Name)
+  const memberThen = rest.match(/\.then\s*\(\s*\(?\s*(\w+)\s*\)?\s*=>/);
+  if (memberThen) {
+    const paramName = memberThen[1];
+    const thenBody = rest.substring(memberThen.index! + memberThen[0].length, rest.length);
+    const memberPattern = new RegExp(`${paramName}\\.([A-Z]\\w*)`, 'g');
+    const names: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = memberPattern.exec(thenBody)) !== null) {
+      if (!names.includes(m[1])) names.push(m[1]);
+    }
+    return names;
+  }
+
+  // Pattern 3: const { Name1, Name2 } = await import('mod')
+  // Look BEFORE the import() call
+  const beforeImport = source.substring(Math.max(0, importStartIndex - 200), importStartIndex);
+  const destructuredAwait = beforeImport.match(/(?:const|let|var)\s+\{([^}]+)\}\s*=\s*await\s*$/);
+  if (destructuredAwait) {
+    return destructuredAwait[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !s.startsWith('type '))
+      .map((s) => s.split(/\s+as\s+/)[0].trim())
+      .filter((s) => s.length > 0);
+  }
+
+  return [];
+}
+
+/**
  * Regex patterns to extract full import statements and module specifiers.
  *
  * Group 0: full match
@@ -119,6 +174,7 @@ export async function parseFileImports(
   const lines = source.split('\n');
   const results: IconUsage[] = [];
 
+  let lineOffset = 0;
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
 
@@ -176,27 +232,41 @@ export async function parseFileImports(
       }
     }
 
-    // Dynamic imports — only path-based extraction (no named imports possible)
-    if (!extractNamed) {
-      for (const pattern of DYNAMIC_IMPORT_PATTERNS) {
-        const regex = new RegExp(pattern.source, pattern.flags);
+    // Dynamic imports
+    for (const pattern of DYNAMIC_IMPORT_PATTERNS) {
+      const regex = new RegExp(pattern.source, pattern.flags);
 
-        while ((match = regex.exec(line)) !== null) {
-          const moduleSpecifier = match[1];
+      while ((match = regex.exec(line)) !== null) {
+        const moduleSpecifier = match[1];
 
-          iconPattern.lastIndex = 0;
-          const iconMatch = iconPattern.exec(moduleSpecifier);
+        iconPattern.lastIndex = 0;
+        const iconMatch = iconPattern.exec(moduleSpecifier);
 
-          if (iconMatch && iconMatch[1]) {
+        if (!iconMatch) continue;
+
+        if (extractNamed) {
+          const prefix = iconMatch[1] || '';
+          const absStart = lineOffset + match.index;
+          const absEnd = absStart + match[0].length;
+          const names = extractDynamicImportNames(source, absStart, absEnd);
+          for (const name of names) {
             results.push({
-              name: iconMatch[1],
+              name: prefix ? `${prefix}/${name}` : name,
               source: filePath,
               line: lineIndex + 1,
             });
           }
+        } else if (iconMatch[1]) {
+          results.push({
+            name: iconMatch[1],
+            source: filePath,
+            line: lineIndex + 1,
+          });
         }
       }
     }
+
+    lineOffset += line.length + 1; // +1 for \n
   }
 
   return results;

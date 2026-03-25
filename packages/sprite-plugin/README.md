@@ -209,6 +209,7 @@ The plugin matches icon names to SVG filenames in `iconsDir` using multiple stra
 ```
 "cart"     → cart.svg
 "CartIcon" → cart-icon.svg (PascalCase → kebab-case)
+"Coupon2"  → coupon-2.svg  (letter + digit boundary)
 ```
 
 **Path-based matching** (with `extractNamedImports` and a capture group):
@@ -263,7 +264,7 @@ export { CartIcon } from '@ui/icons/cart';
 
 // Dynamic imports
 const CartIcon = await import('@ui/icons/cart');
-import('@ui/icons/cart').then(/* ... */);
+import('@ui/icons/cart').then(({ CartIcon }) => /* ... */);
 
 // CommonJS
 const CartIcon = require('@ui/icons/cart');
@@ -289,6 +290,18 @@ import { Cart as MyCart } from '@ui/Icon/common';
 // Type imports are excluded
 import { type CartProps, Cart } from '@ui/Icon/common';
 // → icon: common/Cart (CartProps is skipped)
+
+// Dynamic imports with .then() — member access (React.lazy pattern)
+import('@ui/Icon/ui').then((m) => ({ default: m.ChevronRight }));
+// → icon: ui/ChevronRight
+
+// Dynamic imports with .then() — destructured
+import('@ui/Icon/ui').then(({ ChevronRight, Cart }) => ...);
+// → icons: ui/ChevronRight, ui/Cart
+
+// Destructured await
+const { ChevronRight, Cart } = await import('@ui/Icon/ui');
+// → icons: ui/ChevronRight, ui/Cart
 ```
 
 Imports inside comments (`//` and `/* */`) are correctly ignored.
@@ -328,7 +341,7 @@ The manifest contains a machine-readable report of what was generated:
     { "name": "cart", "sources": ["src/components/Cart.tsx:5"] },
     { "name": "ui/arrow", "sources": ["src/components/Nav.tsx:2"] }
   ],
-  "missing": ["PacmanLazy", "SplitLazy", "Coupon2"]
+  "missing": ["PacmanLazy", "SplitLazy"]
 }
 ```
 
@@ -349,6 +362,8 @@ When using `extractNamedImports: true`, the plugin warns about import patterns t
 ```
 
 These warnings help you find and fix patterns that would cause icons to be silently excluded from the sprite.
+
+> **Note:** Some libraries export lazy-loading wrappers (e.g., `PacmanLazy`) that don't correspond to actual SVG files. These will appear in the `missing` list — this is expected and safe to ignore.
 
 ## SVG ID Collision Protection
 

@@ -45,12 +45,14 @@ function fileNameToId(fileName: string): string {
 /**
  * Converts a PascalCase or camelCase name to kebab-case.
  * "ChevronRight" → "chevron-right"
- * "CartIcon2" → "cart-icon-2"
+ * "Coupon2"      → "coupon-2"
+ * "CartIcon2"    → "cart-icon-2"
  */
 function toKebabCase(name: string): string {
   return name
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .replace(/([a-z])([0-9])/g, '$1-$2')
     .toLowerCase();
 }
 
