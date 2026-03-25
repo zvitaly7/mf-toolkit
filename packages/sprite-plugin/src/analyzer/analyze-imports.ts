@@ -1,18 +1,19 @@
 import type { AnalyzerOptions, IconUsage } from '../types.js';
 import { scanFiles } from './scan-files.js';
-import { parseFileImports } from './parse-imports.js';
+import { resolveParser } from './resolve-parser.js';
 
 /**
  * Analyzes source files to find all icon imports matching the given pattern.
  * Returns a deduplicated list of icon usages.
  */
 export async function analyzeImports(options: AnalyzerOptions): Promise<IconUsage[]> {
+  const parseFn = await resolveParser(options.parser);
   const files = await scanFiles(options.sourceDirs, options.extensions);
 
   const allUsages: IconUsage[] = [];
 
   for (const file of files) {
-    const usages = await parseFileImports(file, options.importPattern, options.extractNamedImports);
+    const usages = await parseFn(file, options.importPattern, options.extractNamedImports ?? false);
     allUsages.push(...usages);
   }
 
