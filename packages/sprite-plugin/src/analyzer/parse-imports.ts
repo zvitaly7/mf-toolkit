@@ -70,18 +70,41 @@ function normalizeImports(source: string): string {
 }
 
 /**
- * Regex patterns to extract module specifiers from source code.
+ * Extracts named imports from an import statement.
  *
- * Matches:
- *   import { X } from 'module'
- *   import X from 'module'
- *   import * as X from 'module'
- *   export { X } from 'module'
- *   import('module')
- *   require('module')
+ * "import { ChevronRight, Cart as MyCart } from 'module'"
+ *  → ["ChevronRight", "Cart"]
+ *
+ * "import type { Icon } from 'module'"
+ *  → ["Icon"]
  */
-const IMPORT_PATTERNS = [
-  /(?:import|export)\s+.*?from\s+['"]([^'"]+)['"]/g,
+function extractNamedImports(importStatement: string): string[] {
+  const braceMatch = importStatement.match(/\{([^}]+)\}/);
+  if (!braceMatch) return [];
+
+  return braceMatch[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((s) => {
+      // Handle "type X" (inline type imports)
+      const withoutType = s.replace(/^type\s+/, '');
+      // Handle "X as Y" — take the original name X
+      return withoutType.split(/\s+as\s+/)[0].trim();
+    })
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Regex patterns to extract full import statements and module specifiers.
+ *
+ * Group 0: full match
+ * Group 1: module specifier
+ */
+const STATIC_IMPORT_PATTERN =
+  /(?:import|export)\s+.*?from\s+['"]([^'"]+)['"]/g;
+
+const DYNAMIC_IMPORT_PATTERNS = [
   /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
   /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
 ];
@@ -89,6 +112,7 @@ const IMPORT_PATTERNS = [
 export async function parseFileImports(
   filePath: string,
   iconPattern: RegExp,
+  extractNamed = false,
 ): Promise<IconUsage[]> {
   const raw = await readFile(filePath, 'utf-8');
   const source = normalizeImports(stripComments(raw));
@@ -98,23 +122,56 @@ export async function parseFileImports(
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
 
-    for (const pattern of IMPORT_PATTERNS) {
-      const regex = new RegExp(pattern.source, pattern.flags);
-      let match: RegExpExecArray | null;
+    // Static imports — support both path-based and named-import extraction
+    const staticRegex = new RegExp(STATIC_IMPORT_PATTERN.source, STATIC_IMPORT_PATTERN.flags);
+    let match: RegExpExecArray | null;
 
-      while ((match = regex.exec(line)) !== null) {
-        const moduleSpecifier = match[1];
+    while ((match = staticRegex.exec(line)) !== null) {
+      const moduleSpecifier = match[1];
 
-        // Reset iconPattern state if it has global flag
-        iconPattern.lastIndex = 0;
-        const iconMatch = iconPattern.exec(moduleSpecifier);
+      iconPattern.lastIndex = 0;
+      const iconMatch = iconPattern.exec(moduleSpecifier);
 
-        if (iconMatch && iconMatch[1]) {
+      if (!iconMatch) continue;
+
+      if (extractNamed) {
+        // Named import mode: extract icon names from { ... }
+        const names = extractNamedImports(match[0]);
+        for (const name of names) {
           results.push({
-            name: iconMatch[1],
+            name,
             source: filePath,
             line: lineIndex + 1,
           });
+        }
+      } else if (iconMatch[1]) {
+        // Path mode: extract icon name from capture group in module specifier
+        results.push({
+          name: iconMatch[1],
+          source: filePath,
+          line: lineIndex + 1,
+        });
+      }
+    }
+
+    // Dynamic imports — only path-based extraction (no named imports possible)
+    if (!extractNamed) {
+      for (const pattern of DYNAMIC_IMPORT_PATTERNS) {
+        const regex = new RegExp(pattern.source, pattern.flags);
+
+        while ((match = regex.exec(line)) !== null) {
+          const moduleSpecifier = match[1];
+
+          iconPattern.lastIndex = 0;
+          const iconMatch = iconPattern.exec(moduleSpecifier);
+
+          if (iconMatch && iconMatch[1]) {
+            results.push({
+              name: iconMatch[1],
+              source: filePath,
+              line: lineIndex + 1,
+            });
+          }
         }
       }
     }

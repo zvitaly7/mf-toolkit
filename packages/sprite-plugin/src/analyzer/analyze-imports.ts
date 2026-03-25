@@ -12,7 +12,7 @@ export async function analyzeImports(options: AnalyzerOptions): Promise<IconUsag
   const allUsages: IconUsage[] = [];
 
   for (const file of files) {
-    const usages = await parseFileImports(file, options.importPattern);
+    const usages = await parseFileImports(file, options.importPattern, options.extractNamedImports);
     allUsages.push(...usages);
   }
 

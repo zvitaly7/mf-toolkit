@@ -34,6 +34,35 @@ function fileNameToId(fileName: string): string {
 }
 
 /**
+ * Converts a PascalCase or camelCase name to kebab-case.
+ * "ChevronRight" → "chevron-right"
+ * "CartIcon2" → "cart-icon-2"
+ */
+function toKebabCase(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase();
+}
+
+/**
+ * Generates candidate names for matching an icon name to a file.
+ * Tries multiple conventions: exact, lowercase, kebab-case.
+ *
+ * "ChevronRight" → ["chevronright", "chevron-right"]
+ * "cart" → ["cart"]
+ */
+function nameCandidates(name: string): string[] {
+  const lower = name.toLowerCase();
+  const kebab = toKebabCase(name);
+  const candidates = [lower];
+  if (kebab !== lower) {
+    candidates.push(kebab);
+  }
+  return candidates;
+}
+
+/**
  * Scans iconsDir for SVG files, filters to only the requested icon names,
  * optimizes each SVG, and assembles them into a sprite string.
  */
@@ -42,7 +71,8 @@ export async function buildSprite(
   iconNames: string[],
   verbose = false,
 ): Promise<{ svg: string; included: string[]; missing: string[] }> {
-  const requestedSet = new Set(iconNames.map((n) => n.toLowerCase()));
+  // Deduplicate requested names
+  const requestedNames = [...new Set(iconNames)];
   const included: string[] = [];
   const missing: string[] = [];
 
@@ -68,23 +98,39 @@ export async function buildSprite(
   }
 
   // Match requested icons to files
+  // Tries multiple name formats: lowercase, kebab-case (for PascalCase imports)
   const symbols: SvgSymbol[] = [];
+  const seen = new Set<string>();
 
-  for (const name of requestedSet) {
-    const filePath = fileMap.get(name);
+  for (const name of requestedNames) {
+    const candidates = nameCandidates(name);
+    let filePath: string | undefined;
+    let matchedId: string | undefined;
 
-    if (!filePath) {
+    for (const candidate of candidates) {
+      filePath = fileMap.get(candidate);
+      if (filePath) {
+        matchedId = candidate;
+        break;
+      }
+    }
+
+    if (!filePath || !matchedId) {
       missing.push(name);
       if (verbose) {
-        console.warn(`[sprite] Icon not found: "${name}"`);
+        console.warn(`[sprite] Icon not found: "${name}" (tried: ${candidates.join(', ')})`);
       }
       continue;
     }
 
+    // Prevent duplicate symbols from different name forms
+    if (seen.has(matchedId)) continue;
+    seen.add(matchedId);
+
     const raw = await readFile(filePath, 'utf-8');
     const optimized = optimizeSvg(raw);
-    symbols.push(svgToSymbol(name, optimized));
-    included.push(name);
+    symbols.push(svgToSymbol(matchedId, optimized));
+    included.push(matchedId);
   }
 
   if (verbose) {

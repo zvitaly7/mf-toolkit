@@ -14,6 +14,7 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
     sourceDirs,
     importPattern,
     output,
+    extractNamedImports,
     extensions,
     verbose = false,
     skipIfEmpty = false,
@@ -23,6 +24,7 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
   const usages = await analyzeImports({
     sourceDirs,
     importPattern,
+    extractNamedImports,
     extensions,
   });
 
