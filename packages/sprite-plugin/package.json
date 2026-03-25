@@ -42,5 +42,9 @@
   },
   "dependencies": {
     "svgo": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "typescript": "^5.9.3"
   }
 }
