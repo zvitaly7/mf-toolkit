@@ -37,5 +37,8 @@
     "type": "git",
     "url": "https://github.com/zvitaly7/mf-toolkit",
     "directory": "packages/sprite-plugin"
+  },
+  "dependencies": {
+    "svgo": "^4.0.1"
   }
 }
