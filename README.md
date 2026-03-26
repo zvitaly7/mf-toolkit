@@ -15,6 +15,8 @@ Modular **build-time optimization tools** for microfrontend architectures. Tree-
 <img src="https://img.shields.io/badge/analyzer_deps-zero_by_default-brightgreen" alt="zero deps" />
 <img src="https://img.shields.io/badge/size-17_KB-blue" alt="size" />
 
+![SVG sprite optimization: 319 icons → 38 used, 88% reduction](./packages/sprite-plugin/assets/feature.png)
+
 **Your design system has 500 icons. Your microfrontend uses 12. Why ship all of them?**
 
 A webpack plugin (and standalone tool) that statically analyzes your source code, detects which SVG icons are actually imported, and generates an optimized sprite containing only those icons. Like tree-shaking, but for SVG sprites.
