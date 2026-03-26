@@ -56,9 +56,23 @@ export async function parseFileImports(
               });
             }
           } else if (ts.isNamespaceImport(clause.namedBindings)) {
-            // import * as X — not statically analyzable
+            console.warn(
+              `[sprite] Namespace import is not statically analyzable: ${node.getText(sourceFile).trim()}\n` +
+              `  at ${filePath}:${getLine(node)}\n` +
+              `  Refactor to named imports: import { Icon1, Icon2 } from '${moduleSpecifier}'`,
+            );
             return;
           }
+        }
+
+        // Warn about export * — not statically analyzable
+        if (ts.isExportDeclaration(importStatement) && !importStatement.exportClause) {
+          console.warn(
+            `[sprite] Wildcard re-export is not statically analyzable: ${importStatement.getText(sourceFile).trim()}\n` +
+            `  at ${filePath}:${getLine(node)}\n` +
+            `  Refactor to named re-exports: export { Icon1, Icon2 } from '${moduleSpecifier}'`,
+          );
+          return;
         }
 
         // Handle export { A, B } from 'mod'
