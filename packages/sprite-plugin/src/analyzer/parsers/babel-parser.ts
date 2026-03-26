@@ -73,6 +73,18 @@ export async function parseFileImports(
 
     if (extractNamed) {
       const prefix = iconMatch[1] || '';
+
+      // Warn about namespace imports — not statically analyzable
+      const hasNamespace = (node.specifiers ?? []).some((s: any) => s.type === 'ImportNamespaceSpecifier');
+      if (hasNamespace) {
+        console.warn(
+          `[sprite] Namespace import is not statically analyzable: import * as ... from '${specifier}'\n` +
+          `  at ${filePath}:${line}\n` +
+          `  Refactor to named imports: import { Icon1, Icon2 } from '${specifier}'`,
+        );
+        return;
+      }
+
       for (const spec of node.specifiers ?? []) {
         // Skip inline type specifiers: import { type X, Y } → only Y
         if (spec.type === 'ImportSpecifier' && spec.importKind !== 'type') {
@@ -94,6 +106,16 @@ export async function parseFileImports(
     if (!iconMatch) return;
 
     if (extractNamed) {
+      // Warn about export * — not statically analyzable
+      if (node.type === 'ExportAllDeclaration') {
+        console.warn(
+          `[sprite] Wildcard re-export is not statically analyzable: export * from '${specifier}'\n` +
+          `  at ${filePath}:${line}\n` +
+          `  Refactor to named re-exports: export { Icon1, Icon2 } from '${specifier}'`,
+        );
+        return;
+      }
+
       const prefix = iconMatch[1] || '';
       for (const spec of node.specifiers ?? []) {
         // Skip inline type specifiers: export { type X, Y } → only Y
