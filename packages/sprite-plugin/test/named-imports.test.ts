@@ -21,7 +21,7 @@ describe('named imports mode', () => {
     expect(names).toContain('Search');
   });
 
-  it('extracts type imports in named mode', async () => {
+  it('ignores type-only imports in named mode', async () => {
     const result = await analyzeImports({
       sourceDirs: [FIXTURES_SRC],
       importPattern: /@ui\/Icon\/.+/,
@@ -30,7 +30,8 @@ describe('named imports mode', () => {
     });
 
     const names = result.map((r) => r.name);
-    expect(names).toContain('Star');
+    // import type { Star } from '@ui/Icon/other' should be ignored
+    expect(names).not.toContain('Star');
   });
 
   it('does not extract named imports when mode is off', async () => {

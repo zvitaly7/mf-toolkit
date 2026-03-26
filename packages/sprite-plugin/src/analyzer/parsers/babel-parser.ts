@@ -36,11 +36,13 @@ export async function parseFileImports(
     if (!node || typeof node !== 'object') return;
 
     if (node.type === 'ImportDeclaration' && node.source?.value) {
-      processStaticImport(node);
+      // Skip type-only imports: import type { X } from 'mod'
+      if (node.importKind !== 'type') processStaticImport(node);
     }
 
     if ((node.type === 'ExportNamedDeclaration' || node.type === 'ExportAllDeclaration') && node.source?.value) {
-      processExport(node);
+      // Skip type-only exports: export type { X } from 'mod'
+      if (node.exportKind !== 'type') processExport(node);
     }
 
     if (node.type === 'CallExpression') {
@@ -72,7 +74,8 @@ export async function parseFileImports(
     if (extractNamed) {
       const prefix = iconMatch[1] || '';
       for (const spec of node.specifiers ?? []) {
-        if (spec.type === 'ImportSpecifier') {
+        // Skip inline type specifiers: import { type X, Y } → only Y
+        if (spec.type === 'ImportSpecifier' && spec.importKind !== 'type') {
           const name = spec.imported.name ?? spec.imported.value;
           results.push({ name: prefix ? `${prefix}/${name}` : name, source: filePath, line });
         }
@@ -93,7 +96,8 @@ export async function parseFileImports(
     if (extractNamed) {
       const prefix = iconMatch[1] || '';
       for (const spec of node.specifiers ?? []) {
-        if (spec.type === 'ExportSpecifier') {
+        // Skip inline type specifiers: export { type X, Y } → only Y
+        if (spec.type === 'ExportSpecifier' && spec.exportKind !== 'type') {
           const name = spec.local.name ?? spec.local.value;
           results.push({ name: prefix ? `${prefix}/${name}` : name, source: filePath, line });
         }

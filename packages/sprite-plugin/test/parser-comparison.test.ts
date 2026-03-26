@@ -26,7 +26,7 @@ describe('parser comparison: path mode', () => {
     { file: 'multiline.ts', expected: ['star'] },
     { file: 'commented.ts', expected: [] },
     { file: 'dynamic.ts', expected: ['cart', 'search'] },
-    { file: 'type-imports.ts', expected: ['star'] },
+    { file: 'type-imports.ts', expected: [] },
     { file: 'reexport.ts', expected: ['cart'] },
   ];
 
@@ -56,8 +56,9 @@ describe('parser comparison: path mode', () => {
 
 describe('parser comparison: named import mode', () => {
   const files = [
-    { file: 'named-imports.ts', pattern: /@ui\/Icon\/(.+)/, expected: ['ui/Cart', 'ui/Search', 'other/Star'] },
+    { file: 'named-imports.ts', pattern: /@ui\/Icon\/(.+)/, expected: ['ui/Cart', 'ui/Search'] },
     { file: 'categorized-imports.ts', pattern: /@ui\/Icon\/(.+)/, expected: ['ui/Arrow', 'payment/Arrow'] },
+    { file: 'inline-type-imports.ts', pattern: /@ui\/Icon\/(.+)/, expected: ['ui/Cart', 'ui/Search'] },
   ];
 
   for (const { file, pattern, expected } of files) {
