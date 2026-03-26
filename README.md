@@ -12,7 +12,7 @@ Build-time and runtime tools for **microfrontend architectures**. Each package i
 ### [@mf-toolkit/sprite-plugin](./packages/sprite-plugin)
 
 ![npm](https://img.shields.io/badge/npm-@mf--toolkit/sprite--plugin-CB3837?logo=npm)
-![zero deps](https://img.shields.io/badge/analyzer_deps-zero-brightgreen)
+![zero deps](https://img.shields.io/badge/analyzer_deps-zero_by_default-brightgreen)
 
 > **Your monolith has 500 icons. Your microfrontend uses 12. Why ship all of them?**
 
@@ -49,7 +49,7 @@ module.exports = {
 - Optional JSON manifest for CI pipelines
 - SSR-safe, idempotent sprite injection
 
-> **No Babel, no AST.** The analyzer intentionally uses regex-based parsing with only Node.js built-ins — keeping the install footprint at **17 KB** instead of adding 5+ MB of parser dependencies. Tested against a production codebase: identical results compared to a Babel-based analyzer.
+> **Zero dependencies by default.** The analyzer uses regex-based parsing with only Node.js built-ins — keeping the install footprint at **17 KB**. Need full syntactic accuracy? Opt into TypeScript Compiler API or Babel parser via `parser: 'typescript' | 'babel'` — both are optional peer dependencies, loaded dynamically only when selected.
 
 [Full documentation and API reference →](./packages/sprite-plugin)
 
@@ -58,7 +58,7 @@ module.exports = {
 ## Philosophy
 
 - **Use what you need.** Every package is published independently to npm. No forced coupling.
-- **Minimal dependencies.** If it can be done with Node.js built-ins, it should be. No AST parsers, no glob libraries — just the standard library.
+- **Minimal dependencies.** Zero deps by default, optional AST parsers for those who need them. No glob libraries — just the standard library.
 - **Build-time over runtime.** Optimize at build, ship less to the browser.
 
 ## License
