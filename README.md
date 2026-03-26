@@ -12,8 +12,8 @@ Modular **build-time optimization tools** for microfrontend architectures. Tree-
 ### 🎯 SVG Sprite Optimization — [@mf-toolkit/sprite-plugin](./packages/sprite-plugin)
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/sprite-plugin?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/sprite-plugin)
-![zero deps](https://img.shields.io/badge/analyzer_deps-zero_by_default-brightgreen)
-![size](https://img.shields.io/badge/size-17_KB-blue)
+<img src="https://img.shields.io/badge/analyzer_deps-zero_by_default-brightgreen" alt="zero deps" />
+<img src="https://img.shields.io/badge/size-17_KB-blue" alt="size" />
 
 **Your design system has 500 icons. Your microfrontend uses 12. Why ship all of them?**
 
