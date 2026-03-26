@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/sprite-plugin?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/sprite-plugin)
 [![node](https://img.shields.io/node/v/@mf-toolkit/sprite-plugin?color=339933&logo=node.js)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/@mf-toolkit/sprite-plugin?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/packages/sprite-plugin/LICENSE)
-![zero deps](https://img.shields.io/badge/analyzer_deps-zero-brightgreen)
+![zero deps](https://img.shields.io/badge/analyzer_deps-zero_by_default-brightgreen)
 
 > **Your monolith has 500 icons. Your microfrontend uses 12. Why ship all of them?**
 

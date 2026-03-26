@@ -11,7 +11,7 @@ Build-time and runtime tools for **microfrontend architectures**. Each package i
 
 ### [@mf-toolkit/sprite-plugin](./packages/sprite-plugin)
 
-![npm](https://img.shields.io/badge/npm-@mf--toolkit/sprite--plugin-CB3837?logo=npm)
+[![npm version](https://img.shields.io/npm/v/@mf-toolkit/sprite-plugin?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/sprite-plugin)
 ![zero deps](https://img.shields.io/badge/analyzer_deps-zero_by_default-brightgreen)
 
 > **Your monolith has 500 icons. Your microfrontend uses 12. Why ship all of them?**
