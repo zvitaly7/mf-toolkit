@@ -46,6 +46,8 @@ export async function parseFileImports(
         if (clause?.namedBindings) {
           if (ts.isNamedImports(clause.namedBindings)) {
             for (const element of clause.namedBindings.elements) {
+              // Skip inline type specifiers: import { type X, Y } → only Y
+              if (element.isTypeOnly) continue;
               const name = (element.propertyName ?? element.name).getText(sourceFile);
               results.push({
                 name: prefix ? `${prefix}/${name}` : name,
@@ -63,6 +65,8 @@ export async function parseFileImports(
         if (ts.isExportDeclaration(importStatement) && importStatement.exportClause) {
           if (ts.isNamedExports(importStatement.exportClause)) {
             for (const element of importStatement.exportClause.elements) {
+              // Skip inline type specifiers: export { type X, Y } → only Y
+              if (element.isTypeOnly) continue;
               const name = (element.propertyName ?? element.name).getText(sourceFile);
               results.push({
                 name: prefix ? `${prefix}/${name}` : name,
@@ -85,12 +89,18 @@ export async function parseFileImports(
   function visit(node: any): void {
     // Static imports: import ... from 'mod'
     if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      processSpecifier(node.moduleSpecifier.text, node, node);
+      // Skip type-only imports: import type { X } from 'mod'
+      if (!node.importClause?.isTypeOnly) {
+        processSpecifier(node.moduleSpecifier.text, node, node);
+      }
     }
 
     // Exports: export { ... } from 'mod', export * from 'mod'
     if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      processSpecifier(node.moduleSpecifier.text, node, node);
+      // Skip type-only exports: export type { X } from 'mod'
+      if (!node.isTypeOnly) {
+        processSpecifier(node.moduleSpecifier.text, node, node);
+      }
     }
 
     // Dynamic imports: import('mod'), require('mod')

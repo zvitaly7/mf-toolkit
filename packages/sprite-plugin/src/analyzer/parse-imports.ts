@@ -86,11 +86,11 @@ function extractNamedImports(importStatement: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
+    // Skip inline type specifiers: import { type X, Y } → only Y
+    .filter((s) => !s.startsWith('type '))
     .map((s) => {
-      // Handle "type X" (inline type imports)
-      const withoutType = s.replace(/^type\s+/, '');
       // Handle "X as Y" — take the original name X
-      return withoutType.split(/\s+as\s+/)[0].trim();
+      return s.split(/\s+as\s+/)[0].trim();
     })
     .filter((s) => s.length > 0);
 }
@@ -189,6 +189,9 @@ export async function parseFileImports(
       const iconMatch = iconPattern.exec(moduleSpecifier);
 
       if (!iconMatch) continue;
+
+      // Skip type-only imports: import type { X } from '...', export type { X } from '...'
+      if (/(?:import|export)\s+type\s+/.test(match[0])) continue;
 
       if (extractNamed) {
         // Warn about namespace imports — not statically analyzable

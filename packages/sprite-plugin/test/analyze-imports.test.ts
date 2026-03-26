@@ -41,7 +41,7 @@ describe('analyzeImports', () => {
     expect(names).toContain('search');
   });
 
-  it('finds import type statements', async () => {
+  it('ignores import type statements', async () => {
     const result = await analyzeImports({
       sourceDirs: [FIXTURES],
       importPattern: IMPORT_PATTERN,
@@ -49,11 +49,11 @@ describe('analyzeImports', () => {
     });
 
     const names = result.map((r) => r.name);
+    // star is found from multiline.ts, NOT from type-imports.ts
     expect(names).toContain('star');
 
     const typeImportSources = result.filter((r) => r.source.includes('type-imports'));
-    expect(typeImportSources.length).toBeGreaterThanOrEqual(0);
-    // star is found from type-imports.ts or multiline.ts — both valid
+    expect(typeImportSources.length).toBe(0);
   });
 
   it('finds re-exports', async () => {
