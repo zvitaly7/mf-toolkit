@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "project": { "name": "mf-clean", "root": "/projects/mf-clean", "kind": "remote" },
+  "source": {
+    "depth": "local-graph",
+    "sourceDirs": ["src"],
+    "filesScanned": 5
+  },
+  "usage": {
+    "directPackages": ["react", "mobx"],
+    "resolvedPackages": ["react", "mobx"],
+    "packageDetails": [
+      { "package": "react", "importCount": 3, "files": ["src/app.tsx", "src/components/button.tsx", "src/components/input.tsx"], "via": "direct" },
+      { "package": "mobx", "importCount": 2, "files": ["src/store.ts", "src/models/user.ts"], "via": "direct" }
+    ]
+  },
+  "shared": {
+    "declared": {
+      "react": { "singleton": true, "requiredVersion": "^19.0.0" },
+      "mobx": { "singleton": true }
+    },
+    "source": "explicit"
+  },
+  "versions": {
+    "declared": { "react": "^19.0.0", "mobx": "^6.12.0" },
+    "installed": { "react": "19.1.0", "mobx": "6.12.0" }
+  }
+}
