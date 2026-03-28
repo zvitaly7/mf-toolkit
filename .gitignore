@@ -1,4 +1,7 @@
 node_modules/
+# Allow fake node_modules inside test fixtures
+!**/test/fixtures/**/node_modules/
+!**/test/fixtures/**/node_modules/**
 dist/
 *.tsbuildinfo
 .DS_Store
