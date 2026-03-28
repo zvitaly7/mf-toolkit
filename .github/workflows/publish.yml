@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'sprite-plugin@*'
+      - 'shared-inspector@*'
 
 jobs:
   publish:
@@ -28,5 +29,11 @@ jobs:
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Publish sprite-plugin
+        if: startsWith(github.ref, 'refs/tags/sprite-plugin@')
         run: npm publish --access public
         working-directory: packages/sprite-plugin
+
+      - name: Publish shared-inspector
+        if: startsWith(github.ref, 'refs/tags/shared-inspector@')
+        run: npm publish --access public
+        working-directory: packages/shared-inspector
