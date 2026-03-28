@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "project": { "name": "mf-checkout", "root": "/projects/mf-checkout", "kind": "remote" },
+  "source": {
+    "depth": "direct",
+    "sourceDirs": ["src"],
+    "filesScanned": 12
+  },
+  "usage": {
+    "directPackages": ["react", "axios"],
+    "resolvedPackages": ["react", "axios"],
+    "packageDetails": [
+      { "package": "react", "importCount": 4, "files": ["src/app.tsx", "src/pages/home.tsx", "src/pages/cart.tsx", "src/components/button.tsx"], "via": "direct" },
+      { "package": "axios", "importCount": 2, "files": ["src/api/client.ts", "src/api/orders.ts"], "via": "direct" }
+    ]
+  },
+  "shared": {
+    "declared": {
+      "react": { "singleton": true, "requiredVersion": "^19.0.0" },
+      "lodash": {},
+      "@tanstack/react-query": { "singleton": true },
+      "rxjs": {},
+      "date-fns": {}
+    },
+    "source": "explicit"
+  },
+  "versions": {
+    "declared": { "react": "^19.0.0", "lodash": "^4.17.21" },
+    "installed": { "react": "19.0.0" }
+  }
+}
