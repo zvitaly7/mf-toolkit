@@ -14,7 +14,7 @@ const IGNORED_DIRS = ['node_modules', '.git', 'dist', 'build', 'coverage'];
 
 // ─── File scanner ─────────────────────────────────────────────────────────────
 
-async function scanFiles(dirs: string[], extensions: string[]): Promise<string[]> {
+export async function scanFiles(dirs: string[], extensions: string[]): Promise<string[]> {
   const files: string[] = [];
 
   for (const dir of dirs) {
@@ -87,11 +87,15 @@ export async function collectImports(
     }
   }
 
-  return Array.from(pkgFiles.entries()).map(([pkg, fileSet]) => ({
-    package: pkg,
-    file: [...fileSet][0], // primary file (first observed)
-    via: 'direct' as const,
-  }));
+  // Return one PackageOccurrence per (package, file) pair so callers
+  // can aggregate importCount and files[] accurately.
+  return Array.from(pkgFiles.entries()).flatMap(([pkg, fileSet]) =>
+    [...fileSet].map((file) => ({
+      package: pkg,
+      file,
+      via: 'direct' as const,
+    })),
+  );
 }
 
 // ─── Ignore pattern matching ──────────────────────────────────────────────────
