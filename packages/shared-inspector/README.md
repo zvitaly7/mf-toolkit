@@ -1,7 +1,7 @@
 # `@mf-toolkit/shared-inspector`
 
-<img src="https://img.shields.io/badge/status-in_development-orange" alt="in development" />
-<img src="https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey" alt="unreleased" />
+[![status](https://img.shields.io/badge/status-in_development-orange)](https://github.com/zvitaly7/mf-toolkit)
+[![version](https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey)](https://github.com/zvitaly7/mf-toolkit)
 [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
