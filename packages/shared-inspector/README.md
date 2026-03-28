@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/status-in_development-orange" alt="in development" />
 <img src="https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey" alt="unreleased" />
-[![license](https://img.shields.io/badge/license-MIT-blue)](../../LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
 > ⚠️ **Work in progress.** This package is feature-complete and fully tested (160 tests) but has not yet been published to npm. The API is stable but may receive minor changes before the official release. Do not use in production until v0.1.0 is tagged.
