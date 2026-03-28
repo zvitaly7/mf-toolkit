@@ -1,6 +1,7 @@
 import { resolve, dirname } from 'node:path';
 import type { CollectorOptions, ProjectManifest, PackageOccurrence } from '../types.js';
 import { collectImports, scanFiles } from './collect-imports.js';
+import { traverseLocalModules } from './traverse-local-modules.js';
 import { parseSharedConfig } from './parse-shared-config.js';
 import { resolveVersions } from './resolve-versions.js';
 
@@ -38,11 +39,8 @@ export async function buildProjectManifest(
   let effectiveDepth: 'direct' | 'local-graph';
 
   if (depth === 'local-graph') {
-    // TODO(step-10): replace with traverseLocalModules when implemented
-    throw new Error(
-      '[shared-inspector] depth: "local-graph" is not yet implemented. ' +
-      'Use depth: "direct" or wait for the next step.',
-    );
+    occurrences = await traverseLocalModules({ sourceDirs, extensions, ignore });
+    effectiveDepth = 'local-graph';
   } else {
     occurrences = await collectImports({ sourceDirs, extensions, ignore });
     effectiveDepth = 'direct';
@@ -52,9 +50,13 @@ export async function buildProjectManifest(
   const byPackage = new Map<string, { files: Set<string>; via: 'direct' | 'reexport' }>();
   for (const occ of occurrences) {
     if (!byPackage.has(occ.package)) {
-      byPackage.set(occ.package, { files: new Set(), via: occ.via });
+      byPackage.set(occ.package, { files: new Set([occ.file]), via: occ.via });
+    } else {
+      const entry = byPackage.get(occ.package)!;
+      entry.files.add(occ.file);
+      // Direct import takes precedence over reexport at the manifest level too
+      if (occ.via === 'direct') entry.via = 'direct';
     }
-    byPackage.get(occ.package)!.files.add(occ.file);
   }
 
   const packageDetails = Array.from(byPackage.entries()).map(([pkg, { files, via }]) => ({
@@ -68,8 +70,8 @@ export async function buildProjectManifest(
     .filter((d) => d.via === 'direct')
     .map((d) => d.package);
 
-  // For depth: 'direct', resolvedPackages === directPackages
-  const resolvedPackages = [...directPackages];
+  // resolvedPackages = all observed packages (direct + reexport)
+  const resolvedPackages = packageDetails.map((d) => d.package);
 
   // ── Step 4: parse shared config ───────────────────────────────────────────
   const sharedDeclared = parseSharedConfig(sharedConfig);
