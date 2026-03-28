@@ -156,17 +156,116 @@ describe('buildProjectManifest — direct mode', () => {
   });
 });
 
-// ─── local-graph throws until implemented ────────────────────────────────────
+// ─── Local-graph mode ─────────────────────────────────────────────────────────
 
-describe('buildProjectManifest — local-graph (not yet implemented)', () => {
-  it('throws when depth: local-graph is requested', async () => {
-    await expect(
-      buildProjectManifest({
-        name: 'checkout',
-        sourceDirs: [CHECKOUT_SRC],
-        depth: 'local-graph',
-        packageJsonPath: CHECKOUT_PKG,
-      }),
-    ).rejects.toThrow('local-graph');
+describe('buildProjectManifest — local-graph mode', () => {
+  it('records source depth as local-graph', async () => {
+    const manifest = await buildProjectManifest({
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      depth: 'local-graph',
+      packageJsonPath: CHECKOUT_PKG,
+    });
+
+    expect(manifest.source.depth).toBe('local-graph');
+  });
+
+  it('finds packages hidden behind barrel re-exports', async () => {
+    const manifest = await buildProjectManifest({
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      depth: 'local-graph',
+      packageJsonPath: CHECKOUT_PKG,
+    });
+
+    expect(manifest.usage.resolvedPackages).toContain('mobx');
+    expect(manifest.usage.resolvedPackages).toContain('mobx-react');
+  });
+
+  it('marks re-exported packages as via: reexport in packageDetails', async () => {
+    const manifest = await buildProjectManifest({
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      depth: 'local-graph',
+      packageJsonPath: CHECKOUT_PKG,
+    });
+
+    const mobxDetail = manifest.usage.packageDetails.find((d) => d.package === 'mobx');
+    expect(mobxDetail?.via).toBe('reexport');
+    expect(mobxDetail?.files.some((f) => f.includes('shared/index.ts'))).toBe(true);
+  });
+
+  it('resolvedPackages includes both direct and reexported packages', async () => {
+    const manifest = await buildProjectManifest({
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      depth: 'local-graph',
+      packageJsonPath: CHECKOUT_PKG,
+    });
+
+    // direct
+    expect(manifest.usage.resolvedPackages).toContain('react');
+    // via reexport
+    expect(manifest.usage.resolvedPackages).toContain('mobx');
+  });
+
+  it('local-graph manifest is serialisable to JSON without data loss', async () => {
+    const manifest = await buildProjectManifest({
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      depth: 'local-graph',
+      packageJsonPath: CHECKOUT_PKG,
+    });
+
+    const roundtripped = JSON.parse(JSON.stringify(manifest));
+    expect(roundtripped).toEqual(manifest);
+  });
+});
+
+// ─── KEY TEST: direct vs local-graph difference ───────────────────────────────
+
+describe('buildProjectManifest — direct vs local-graph', () => {
+  it('direct mode does NOT find mobx; local-graph DOES find mobx', async () => {
+    const opts = {
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      packageJsonPath: CHECKOUT_PKG,
+    };
+
+    const directManifest = await buildProjectManifest({ ...opts, depth: 'direct' });
+    const graphManifest = await buildProjectManifest({ ...opts, depth: 'local-graph' });
+
+    expect(directManifest.usage.resolvedPackages).not.toContain('mobx');
+    expect(graphManifest.usage.resolvedPackages).toContain('mobx');
+  });
+
+  it('local-graph resolvedPackages is a superset of direct resolvedPackages', async () => {
+    const opts = {
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      packageJsonPath: CHECKOUT_PKG,
+    };
+
+    const directManifest = await buildProjectManifest({ ...opts, depth: 'direct' });
+    const graphManifest = await buildProjectManifest({ ...opts, depth: 'local-graph' });
+
+    for (const pkg of directManifest.usage.resolvedPackages) {
+      expect(graphManifest.usage.resolvedPackages).toContain(pkg);
+    }
+    expect(graphManifest.usage.resolvedPackages.length).toBeGreaterThanOrEqual(
+      directManifest.usage.resolvedPackages.length,
+    );
+  });
+
+  it('default depth is local-graph', async () => {
+    const manifest = await buildProjectManifest({
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      packageJsonPath: CHECKOUT_PKG,
+      // depth not specified — should default to local-graph
+    });
+
+    expect(manifest.source.depth).toBe('local-graph');
+    expect(manifest.usage.resolvedPackages).toContain('mobx');
   });
 });
