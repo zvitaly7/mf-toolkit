@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "project": { "name": "mf-tracking", "root": "/projects/mf-tracking", "kind": "remote" },
+  "source": {
+    "depth": "local-graph",
+    "sourceDirs": ["src"],
+    "filesScanned": 6
+  },
+  "usage": {
+    "directPackages": ["react", "mobx"],
+    "resolvedPackages": ["react", "mobx"],
+    "packageDetails": [
+      { "package": "react", "importCount": 2, "files": ["src/app.tsx", "src/pages/map.tsx"], "via": "direct" },
+      { "package": "mobx", "importCount": 2, "files": ["src/store.ts", "src/models/location.ts"], "via": "direct" }
+    ]
+  },
+  "shared": {
+    "declared": {
+      "react": { "singleton": true, "requiredVersion": "^19.0.0" },
+      "mobx": {}
+    },
+    "source": "explicit"
+  },
+  "versions": {
+    "declared": { "react": "^18.0.0", "mobx": "^6.12.0" },
+    "installed": { "react": "18.3.1", "mobx": "6.12.0" }
+  }
+}
