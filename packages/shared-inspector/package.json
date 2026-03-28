@@ -1,0 +1,56 @@
+{
+  "name": "@mf-toolkit/shared-inspector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build-time shared dependency analyzer for Module Federation.",
+  "author": "Vitaly Zheltko",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./webpack": {
+      "types": "./dist/plugins/webpack.d.ts",
+      "default": "./dist/plugins/webpack.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "microfrontend",
+    "module-federation",
+    "shared",
+    "webpack",
+    "analyzer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zvitaly7/mf-toolkit",
+    "directory": "packages/shared-inspector"
+  },
+  "dependencies": {
+    "semver": "^7.6.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.7"
+  },
+  "peerDependenciesMeta": {
+    "typescript": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/semver": "^7.5.8",
+    "@types/node": "^25.4.0",
+    "typescript": "^5.9.3"
+  }
+}
