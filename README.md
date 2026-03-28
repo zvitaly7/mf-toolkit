@@ -52,6 +52,54 @@ new MfSpriteWebpackPlugin({
 
 ---
 
+### 🔬 MF Shared Dependency Analyser — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
+
+<img src="https://img.shields.io/badge/status-in_development-orange" alt="in development" />
+<img src="https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey" alt="unreleased" />
+<img src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js" alt="node ≥18" />
+
+> ⚠️ **Work in progress.** The package is feature-complete and tested but not yet published to npm. API may change before the stable release.
+
+**Your `shared` config is wrong — and you don't know it yet.**
+
+Module Federation teams manually manage `shared` dependencies and silently ship 10× React, broken singleton chains, and ghost packages that couple independent teams for no reason.
+
+`shared-inspector` is a build-time analyser that catches all three mistakes before they reach production:
+
+- 🗑️ **Over-sharing** — packages declared in `shared` that no file actually imports
+- 📦 **Under-sharing** — packages used by host and remote but missing from `shared` (each MF bundles its own copy)
+- ⚠️ **Version mismatch** — `requiredVersion` doesn't satisfy installed version → silent fallback to local bundle → "Invalid hook call" in prod
+
+```bash
+# not yet on npm — available after merge to main
+npm install @mf-toolkit/shared-inspector --save-dev
+```
+
+```ts
+import { buildProjectManifest, analyzeProject } from '@mf-toolkit/shared-inspector';
+
+const manifest = await buildProjectManifest({
+  name: 'checkout',
+  sourceDirs: ['./src'],
+  sharedConfig: { react: { singleton: true, requiredVersion: '^19.0.0' }, lodash: {} },
+});
+
+const report = analyzeProject(manifest);
+// report.unused    → [{ package: 'lodash', singleton: false }]
+// report.mismatched → [{ package: 'react', configured: '^19.0.0', installed: '18.3.1' }]
+```
+
+**What it does:**
+
+- 🔍 Two scan depths — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
+- 🧠 Detects packages hidden behind `export { X } from 'pkg'` chains that direct-mode tools miss
+- 🔌 Webpack plugin — runs after each compilation, optionally fails the build (`failOn: 'mismatch'`)
+- 📊 Build manifest for CI — each MF writes `project-manifest.json` for cross-team aggregation (v0.2)
+
+[![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
+
+---
+
 ## Philosophy
 
 - ⚡ **Build-time over runtime.** Optimize at build, ship less to the browser.
