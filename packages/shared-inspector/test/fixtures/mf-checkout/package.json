@@ -1,0 +1,14 @@
+{
+  "name": "mf-checkout",
+  "private": true,
+  "dependencies": {
+    "react": "19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^6.26.0",
+    "mobx": "^6.12.0",
+    "mobx-react": "^9.1.0",
+    "axios": "^1.7.0",
+    "lodash": "^4.17.21",
+    "date-fns": "^3.6.0"
+  }
+}
