@@ -75,6 +75,8 @@ export function detectIssues(input: DetectIssuesInput): DetectIssuesResult {
     if (!config.requiredVersion) continue;
     const installed = input.installedVersions[pkg];
     if (!installed) continue;
+    // semver.validRange returns null for invalid ranges; skip to avoid false positives
+    if (!semver.validRange(config.requiredVersion)) continue;
     try {
       if (!semver.satisfies(installed, config.requiredVersion)) {
         mismatched.push({
@@ -84,7 +86,7 @@ export function detectIssues(input: DetectIssuesInput): DetectIssuesResult {
         });
       }
     } catch {
-      // Invalid semver range — skip silently
+      // Defensive: skip if satisfies throws unexpectedly
     }
   }
 
