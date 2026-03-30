@@ -1,6 +1,7 @@
 // ─── Two-phase API ────────────────────────────────────────────────────────────
 export { buildProjectManifest } from './collector/build-project-manifest.js';
 export { analyzeProject } from './analyzer/analyze-project.js';
+export { analyzeFederation } from './analyzer/analyze-federation.js';
 
 // ─── Shortcut API ─────────────────────────────────────────────────────────────
 export { inspect } from './inspect.js';
@@ -22,4 +23,10 @@ export type {
   MismatchedEntry,
   SingletonRiskEntry,
   EagerRiskEntry,
+  FederationAnalysisOptions,
+  FederationReport,
+  GhostShareEntry,
+  HostGapEntry,
+  VersionConflictEntry,
+  SingletonMismatchEntry,
 } from './types.js';
