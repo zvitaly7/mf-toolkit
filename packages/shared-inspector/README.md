@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> ⚠️ **Work in progress.** This package is fully tested (179 tests) and published to npm (`0.1.1`). The API is stable but may receive minor changes before the official stable release.
+> ⚠️ **Work in progress.** This package is fully tested (219 tests) and published to npm. The API is stable but may receive minor changes before the official stable release.
 
 Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
 
@@ -197,7 +197,32 @@ jobs:
           path: project-manifest.json
 ```
 
-`analyzeFederation()` (v0.2) will accept N manifests and detect cross-MF issues: ghost sharing, host gaps, version conflicts.
+Each MF manifest can then be aggregated for cross-team analysis:
+
+```typescript
+import { analyzeFederation, formatFederationReport } from '@mf-toolkit/shared-inspector';
+
+const report = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
+console.log(formatFederationReport(report));
+```
+
+```
+[MfSharedInspector] federation analysis (3 MFs)
+
+  Version conflicts (singleton negotiation will fail):
+    ⚠ react — checkout: ^17.0.0, catalog: ^18.0.0
+
+  Singleton mismatches (add singleton: true to all MFs):
+    ⚠ mobx — singleton in [checkout], not singleton in [catalog, cart]
+
+  Host gaps (add to shared — each MF bundles its own copy):
+    → axios — used by [checkout, catalog], not in shared
+
+  Ghost shares (remove from shared — no other MF benefits):
+    ✗ lodash — shared only by cart, unused by all other MFs
+
+  Total: 3 MFs, 1 version conflicts, 1 singleton mismatches, 1 host gaps, 1 ghost shares
+```
 
 ## API reference
 
@@ -224,7 +249,21 @@ jobs:
 | `additionalCandidates` | `string[]` | `[]` | Extend built-in candidates list |
 | `additionalSingletonRisks` | `string[]` | `[]` | Extend built-in singleton-risk list |
 
+### `analyzeFederation(manifests, options?)`
+
+Accepts N `ProjectManifest` objects (one per microfrontend) and returns a `FederationReport`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `alwaysShared` | `string[]` | `['react','react-dom']` | Exclude from ghost/gap detection |
+
+### `formatFederationReport(report)`
+
+Formats a `FederationReport` as a human-readable terminal string.
+
 ## Detection categories
+
+### Per-project (`analyzeProject`)
 
 | Category | Type | Description |
 |----------|------|-------------|
@@ -236,12 +275,20 @@ jobs:
 
 *Within the visibility of the chosen depth.*
 
+### Cross-MF (`analyzeFederation`)
+
+| Category | Type | Description |
+|----------|------|-------------|
+| `versionConflicts` | Deterministic | `requiredVersion` ranges across MFs have no overlap |
+| `singletonMismatches` | Deterministic | `singleton: true` in some MFs, absent in others |
+| `hostGaps` | Heuristic | Package used by 2+ MFs but not declared in `shared` by anyone |
+| `ghostShares` | Heuristic | Package in `shared` of one MF, unused/unshared by all others |
+
 ## Known limitations
 
 - **TypeScript path aliases without `tsconfigPath`**: aliased imports are treated as external package names. Pass `tsconfigPath` to resolve them correctly.
 - **Dynamic imports with variables** (`import(moduleName)`): not analysed — requires runtime information.
 - **Exact tsconfig alias patterns** (non-wildcard, e.g. `"@root": ["."]`): not supported, only `"@alias/*"` wildcard form.
-- **`analyzeFederation()`** (cross-MF analysis): v0.2.
 
 ## Demo
 
