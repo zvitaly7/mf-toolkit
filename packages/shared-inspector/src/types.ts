@@ -167,7 +167,7 @@ export interface ProjectReport {
 
 // ─── Webpack plugin ───────────────────────────────────────────────────────────
 
-export interface WebpackPluginOptions extends Omit<CollectorOptions, 'name' | 'sharedConfig'> {
+export interface WebpackPluginOptions extends Omit<CollectorOptions, 'name'> {
   /** Policy options for the analyzer */
   analysis?: AnalysisOptions;
   /** Print warnings to console. @default true */
