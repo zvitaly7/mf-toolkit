@@ -5,6 +5,15 @@ on:
     tags:
       - 'sprite-plugin@*'
       - 'shared-inspector@*'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to publish'
+        required: true
+        type: choice
+        options:
+          - shared-inspector
+          - sprite-plugin
 
 jobs:
   publish:
@@ -20,32 +29,32 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build sprite-plugin
-        if: startsWith(github.ref, 'refs/tags/sprite-plugin@')
+        if: startsWith(github.ref, 'refs/tags/sprite-plugin@') || inputs.package == 'sprite-plugin'
         run: npm run build
         working-directory: packages/sprite-plugin
 
       - name: Build shared-inspector
-        if: startsWith(github.ref, 'refs/tags/shared-inspector@')
+        if: startsWith(github.ref, 'refs/tags/shared-inspector@') || inputs.package == 'shared-inspector'
         run: npm run build
         working-directory: packages/shared-inspector
 
       - name: Test sprite-plugin
-        if: startsWith(github.ref, 'refs/tags/sprite-plugin@')
+        if: startsWith(github.ref, 'refs/tags/sprite-plugin@') || inputs.package == 'sprite-plugin'
         run: npx vitest run packages/sprite-plugin
 
       - name: Test shared-inspector
-        if: startsWith(github.ref, 'refs/tags/shared-inspector@')
+        if: startsWith(github.ref, 'refs/tags/shared-inspector@') || inputs.package == 'shared-inspector'
         run: npx vitest run packages/shared-inspector
 
       - name: Setup npm auth
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       - name: Publish sprite-plugin
-        if: startsWith(github.ref, 'refs/tags/sprite-plugin@')
+        if: startsWith(github.ref, 'refs/tags/sprite-plugin@') || inputs.package == 'sprite-plugin'
         run: npm publish --access public
         working-directory: packages/sprite-plugin
 
       - name: Publish shared-inspector
-        if: startsWith(github.ref, 'refs/tags/shared-inspector@')
+        if: startsWith(github.ref, 'refs/tags/shared-inspector@') || inputs.package == 'shared-inspector'
         run: npm publish --access public
         working-directory: packages/shared-inspector
