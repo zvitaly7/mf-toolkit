@@ -68,6 +68,8 @@ export class MfSharedInspectorPlugin {
           packageJsonPath,
           extensions,
           ignore,
+          tsconfigPath,
+          workspacePackages,
           parser,
           analysis,
           warn = true,
@@ -102,6 +104,8 @@ export class MfSharedInspectorPlugin {
             packageJsonPath: resolvedPkgJson,
             extensions,
             ignore,
+            tsconfigPath,
+            workspacePackages,
             parser,
           });
 
@@ -111,7 +115,8 @@ export class MfSharedInspectorPlugin {
             report.mismatched.length > 0 ||
             report.unused.length > 0 ||
             report.candidates.length > 0 ||
-            report.singletonRisks.length > 0;
+            report.singletonRisks.length > 0 ||
+            report.eagerRisks.length > 0;
 
           if (warn && hasFindings) {
             console.warn(
@@ -151,7 +156,7 @@ export class MfSharedInspectorPlugin {
 
 function shouldFailBuild(
   failOn: 'mismatch' | 'unused' | 'any',
-  report: { mismatched: unknown[]; unused: unknown[]; candidates: unknown[]; singletonRisks: unknown[] },
+  report: { mismatched: unknown[]; unused: unknown[]; candidates: unknown[]; singletonRisks: unknown[]; eagerRisks: unknown[] },
 ): boolean {
   switch (failOn) {
     case 'mismatch': return report.mismatched.length > 0;
@@ -160,7 +165,8 @@ function shouldFailBuild(
       report.mismatched.length > 0 ||
       report.unused.length > 0 ||
       report.candidates.length > 0 ||
-      report.singletonRisks.length > 0
+      report.singletonRisks.length > 0 ||
+      report.eagerRisks.length > 0
     );
   }
 }
