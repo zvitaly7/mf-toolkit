@@ -8,6 +8,7 @@ export { inspect } from './inspect.js';
 
 // ─── Reporter ─────────────────────────────────────────────────────────────────
 export { formatReport } from './reporter/format-report.js';
+export { formatFederationReport } from './reporter/format-federation-report.js';
 export { writeReport, writeManifest } from './reporter/write-report.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
