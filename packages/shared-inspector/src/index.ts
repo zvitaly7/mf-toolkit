@@ -21,4 +21,5 @@ export type {
   CandidateEntry,
   MismatchedEntry,
   SingletonRiskEntry,
+  EagerRiskEntry,
 } from './types.js';
