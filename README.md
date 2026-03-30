@@ -54,11 +54,11 @@ new MfSpriteWebpackPlugin({
 
 ### 🔬 MF Shared Dependency Analyser — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
 
-<img src="https://img.shields.io/badge/status-in_development-orange" alt="in development" />
-<img src="https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey" alt="unreleased" />
+[![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
+[![status](https://img.shields.io/badge/status-in_development-orange)](https://github.com/zvitaly7/mf-toolkit)
 <img src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js" alt="node ≥18" />
 
-> ⚠️ **Work in progress.** The package is feature-complete and tested but not yet published to npm. API may change before the stable release.
+> ⚠️ **Work in progress.** The API is stable but may receive minor changes before the official v0.1.0 stable release.
 
 **Your `shared` config is wrong — and you don't know it yet.**
 
@@ -71,7 +71,6 @@ Module Federation teams manually manage `shared` dependencies and silently ship 
 - ⚠️ **Version mismatch** — `requiredVersion` doesn't satisfy installed version → silent fallback to local bundle → "Invalid hook call" in prod
 
 ```bash
-# not yet on npm — available after merge to main
 npm install @mf-toolkit/shared-inspector --save-dev
 ```
 
