@@ -14,7 +14,7 @@ export function analyzeProject(
 ): ProjectReport {
   const policy = mergePolicy(options);
 
-  const { unused, candidates, mismatched, singletonRisks } = detectIssues({
+  const { unused, candidates, mismatched, singletonRisks, eagerRisks } = detectIssues({
     resolvedPackages: manifest.usage.resolvedPackages,
     packageDetails: manifest.usage.packageDetails,
     sharedDeclared: manifest.shared.declared,
@@ -33,6 +33,7 @@ export function analyzeProject(
     candidates,
     mismatched,
     singletonRisks,
+    eagerRisks,
     summary: {
       totalShared,
       usedShared,
@@ -40,6 +41,7 @@ export function analyzeProject(
       candidatesCount: candidates.length,
       mismatchedCount: mismatched.length,
       singletonRisksCount: singletonRisks.length,
+      eagerRisksCount: eagerRisks.length,
     },
   };
 }

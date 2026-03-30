@@ -10,6 +10,7 @@ function makeReport(overrides: Partial<ProjectReport> = {}): ProjectReport {
     candidates: [],
     mismatched: [],
     singletonRisks: [],
+    eagerRisks: [],
     summary: {
       totalShared: 0,
       usedShared: 0,
@@ -17,6 +18,7 @@ function makeReport(overrides: Partial<ProjectReport> = {}): ProjectReport {
       candidatesCount: 0,
       mismatchedCount: 0,
       singletonRisksCount: 0,
+      eagerRisksCount: 0,
     },
     ...overrides,
   };

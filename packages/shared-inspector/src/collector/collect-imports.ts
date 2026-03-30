@@ -40,6 +40,7 @@ export interface CollectImportsOptions {
   sourceDirs: string[];
   extensions?: string[];
   ignore?: string[];
+  workspacePackages?: string[];
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export async function collectImports(
       const pkg = normalizePackageName(specifier);
 
       if (options.ignore?.some((pattern) => matchesIgnorePattern(pkg, pattern))) continue;
+      if (options.workspacePackages?.some((pattern) => matchesIgnorePattern(pkg, pattern))) continue;
 
       if (!pkgFiles.has(pkg)) pkgFiles.set(pkg, new Set());
       pkgFiles.get(pkg)!.add(file);

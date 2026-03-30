@@ -8,6 +8,11 @@ import {
   isNodeBuiltin,
   normalizePackageName,
 } from './parse-declarations.js';
+import {
+  loadTsConfigPaths,
+  resolveAliasedSpecifier,
+  type ResolvedTsConfigPaths,
+} from './resolve-tsconfig-paths.js';
 
 const DEFAULT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 
@@ -15,6 +20,10 @@ export interface TraverseLocalModulesOptions {
   sourceDirs: string[];
   extensions?: string[];
   ignore?: string[];
+  /** Path to tsconfig.json for resolving path aliases (e.g. '@app/*'). */
+  tsconfigPath?: string;
+  /** Workspace package names/globs to skip (e.g. '@my-org/*'). */
+  workspacePackages?: string[];
 }
 
 /**
@@ -24,12 +33,13 @@ export interface TraverseLocalModulesOptions {
  * recursively within those directories. Finds external packages reachable
  * through barrel re-exports and local module wrappers.
  *
- * Differences from collectImports (direct mode):
- *  - Counts both `import` AND `export { X } from 'pkg'` / `export * from 'pkg'`
- *  - Marks re-exported packages with via: 'reexport'
- *  - Follows relative specifiers within sourceDirs (DFS with visited cache)
+ * When tsconfigPath is provided, TypeScript path aliases (e.g. '@app/*') are
+ * resolved to local files and followed in the same DFS — packages behind
+ * aliases become visible.
  *
- * Uses readFileSync for synchronous DFS — acceptable for a build-time tool.
+ * Uses two-phase approach:
+ *   Phase 1 — parallel async reads of all source files into contentMap
+ *   Phase 2 — synchronous DFS over in-memory content (zero disk I/O)
  */
 export async function traverseLocalModules(
   options: TraverseLocalModulesOptions,
@@ -50,6 +60,11 @@ export async function traverseLocalModules(
     }),
   );
 
+  // Load tsconfig path aliases once, before DFS
+  const tsConfigPaths: ResolvedTsConfigPaths | null = options.tsconfigPath
+    ? loadTsConfigPaths(options.tsconfigPath)
+    : null;
+
   const visited = new Set<string>();
   /** package → { files observed in, via: direct | reexport } */
   const pkgMap = new Map<string, { files: Set<string>; via: 'direct' | 'reexport' }>();
@@ -63,6 +78,7 @@ export async function traverseLocalModules(
     if (content === undefined) return;
 
     for (const decl of parseDeclarations(content)) {
+      // ── Relative import → follow locally ──────────────────────────────────
       if (isRelativeSpecifier(decl.specifier)) {
         const resolved = resolveLocalFile(decl.specifier, filePath, contentMap);
         if (resolved) visit(resolved);
@@ -71,8 +87,20 @@ export async function traverseLocalModules(
 
       if (isNodeBuiltin(decl.specifier)) continue;
 
+      // ── TypeScript path alias → resolve and follow locally ────────────────
+      if (tsConfigPaths) {
+        const aliased = resolveAliasedSpecifier(decl.specifier, tsConfigPaths, contentMap);
+        if (aliased) {
+          visit(aliased);
+          continue;
+        }
+      }
+
+      // ── External package ──────────────────────────────────────────────────
       const pkg = normalizePackageName(decl.specifier);
+
       if (options.ignore?.some((p) => matchesIgnorePattern(pkg, p))) continue;
+      if (options.workspacePackages?.some((p) => matchesIgnorePattern(pkg, p))) continue;
 
       const via: 'direct' | 'reexport' = decl.kind === 'reexport' ? 'reexport' : 'direct';
       const existing = pkgMap.get(pkg);
