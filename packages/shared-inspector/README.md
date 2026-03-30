@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](../../LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> ⚠️ **Work in progress.** This package is feature-complete and fully tested (160 tests) but has not yet been published to npm. The API is stable but may receive minor changes before the official release. Do not use in production until v0.1.0 is tagged.
+> ⚠️ **Work in progress.** This package is feature-complete and fully tested (179 tests) but has not yet been published to npm. The API is stable but may receive minor changes before the official release. Do not use in production until v0.1.0 is tagged.
 
 Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
 
@@ -41,7 +41,9 @@ const manifest = await buildProjectManifest({
     'react-dom': { singleton: true, requiredVersion: '^19.0.0' },
     lodash: {},
   },
-  // depth: 'local-graph'  ← default
+  // depth: 'local-graph'       ← default, follows barrel re-exports
+  // tsconfigPath: './tsconfig.json'  ← optional, resolves @alias/* imports
+  // workspacePackages: ['@my-org/*'] ← optional, excludes local monorepo packages
 });
 
 // Phase 2: analyse facts
@@ -57,6 +59,9 @@ console.log(report.candidates);
 
 console.log(report.mismatched);
 // [{ package: 'react', configured: '^19.0.0', installed: '18.3.1' }]
+
+console.log(report.eagerRisks);
+// [{ package: 'react-dom' }]  ← eager: true without singleton: true
 ```
 
 ### Shortcut API
@@ -89,8 +94,9 @@ module.exports = {
         react: { singleton: true, requiredVersion: '^19.0.0' },
         mobx: { singleton: true },
       },
+      tsconfigPath: './tsconfig.json',   // resolve @alias/* imports
       warn: true,
-      writeManifest: true,  // writes project-manifest.json for CI aggregation
+      writeManifest: true,              // writes project-manifest.json for CI
     }),
   ],
 };
@@ -107,17 +113,49 @@ The difference matters when your project uses barrel files:
 
 ```ts
 // src/shared/index.ts
-export { observer } from 'mobx-react';   // re-export
+export { observer } from 'mobx-react';    // re-export
 export { makeAutoObservable } from 'mobx'; // re-export
 ```
 
 ```ts
 // src/app.tsx
-import { observer } from './shared';     // relative import — direct mode stops here
+import { observer } from './shared';  // relative import — direct mode stops here
 ```
 
 - **`depth: 'direct'`** scans `app.tsx`, sees `./shared` (relative) → skips. `mobx` not found.
 - **`depth: 'local-graph'`** follows `./shared` → `shared/index.ts` → finds `mobx` and `mobx-react` via re-export.
+
+## TypeScript path aliases
+
+When your project uses `paths` in `tsconfig.json`, pass `tsconfigPath` so the traverser follows aliased imports into local files instead of treating them as external packages:
+
+```typescript
+// tsconfig.json
+{ "compilerOptions": { "baseUrl": ".", "paths": { "@components/*": ["src/components/*"] } } }
+
+// src/app.tsx
+import { Button } from '@components/Button'; // ← followed as local file, not external package
+```
+
+```typescript
+await buildProjectManifest({
+  sourceDirs: ['./src'],
+  tsconfigPath: './tsconfig.json', // enables alias resolution
+});
+```
+
+Without `tsconfigPath`, `@components/Button` is treated as an external package name and packages imported inside it are invisible in local-graph mode.
+
+## Workspace packages
+
+In a monorepo where local packages import each other, use `workspacePackages` to prevent internal packages from appearing in `resolvedPackages`:
+
+```typescript
+await buildProjectManifest({
+  sourceDirs: ['./src'],
+  workspacePackages: ['@my-org/design-system', '@my-org/*'],
+});
+```
 
 ## Terminal output
 
@@ -138,7 +176,10 @@ import { observer } from './shared';     // relative import — direct mode stop
   Singleton risks (add singleton: true):
     ⚠ react-router-dom — manages global state, singleton: true recommended
 
-  Total: 12 shared, 10 used, 2 unused, 2 candidates, 1 mismatch
+  Eager risks (add singleton: true or remove eager: true):
+    ⚠ react-dom — eager: true without singleton: true, risk of duplicate instances
+
+  Total: 12 shared, 10 used, 2 unused, 2 candidates, 1 mismatch, 1 eager risks
 ```
 
 ## CI pipeline: project → federation
@@ -170,7 +211,9 @@ jobs:
 | `sharedConfig` | `Record<string, SharedDepConfig>` | `{}` | MF shared config |
 | `packageJsonPath` | `string` | `'./package.json'` | Path to package.json |
 | `extensions` | `string[]` | `['.ts','.tsx','.js','.jsx']` | File extensions |
-| `ignore` | `string[]` | `[]` | Packages to ignore (supports `@scope/*`) |
+| `ignore` | `string[]` | `[]` | Packages to exclude (supports `@scope/*`) |
+| `tsconfigPath` | `string` | `undefined` | tsconfig.json for path alias resolution |
+| `workspacePackages` | `string[]` | `[]` | Local monorepo packages to exclude |
 | `kind` | `'host' \| 'remote' \| 'unknown'` | `'unknown'` | Project role |
 
 ### `analyzeProject(manifest, options?)`
@@ -189,13 +232,15 @@ jobs:
 | `unused` | Deterministic* | In `shared` config but not observed in scanned sources |
 | `candidates` | Heuristic | Observed packages not in `shared` that are typically shared |
 | `singletonRisks` | Heuristic | Global-state packages shared without `singleton: true` |
+| `eagerRisks` | Heuristic | `eager: true` without `singleton: true` — risk of duplicate instances |
 
 *Within the visibility of the chosen depth.*
 
 ## Known limitations
 
-- **Workspace packages** (`@company/ui-kit` → `react`): not visible. Use `alwaysShared` as a mitigation.
-- **Dynamic imports with variables** (`import(moduleName)`): not analysed.
+- **TypeScript path aliases without `tsconfigPath`**: aliased imports are treated as external package names. Pass `tsconfigPath` to resolve them correctly.
+- **Dynamic imports with variables** (`import(moduleName)`): not analysed — requires runtime information.
+- **Exact tsconfig alias patterns** (non-wildcard, e.g. `"@root": ["."]`): not supported, only `"@alias/*"` wildcard form.
 - **`analyzeFederation()`** (cross-MF analysis): v0.2.
 
 ## Demo
