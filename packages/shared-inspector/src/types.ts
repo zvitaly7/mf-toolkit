@@ -40,6 +40,20 @@ export interface CollectorOptions {
   extensions?: string[];
   /** Packages to exclude from scan results (supports glob: '@company/*') */
   ignore?: string[];
+  /**
+   * Path to tsconfig.json for resolving TypeScript path aliases (e.g. '@app/*').
+   * When provided, aliased imports are followed during local-graph traversal
+   * just like relative imports — packages behind aliases become visible.
+   * @default undefined (aliases not resolved)
+   */
+  tsconfigPath?: string;
+  /**
+   * Local workspace package names to treat as internal (not external packages).
+   * Imports matching these names are excluded from resolvedPackages.
+   * Supports exact names and '@scope/*' globs.
+   * @example ['@my-org/design-system', '@my-org/*']
+   */
+  workspacePackages?: string[];
   /** Parser strategy. @default 'regex' */
   parser?: ParserStrategy;
 }
@@ -146,6 +160,13 @@ export interface SingletonRiskEntry {
   package: string;
 }
 
+export interface EagerRiskEntry {
+  /** Package declared with eager: true but without singleton: true.
+   *  Eager-loading without singleton can cause duplicate module instances
+   *  when multiple MFs load the same package before negotiation completes. */
+  package: string;
+}
+
 export interface ProjectReport {
   /** Packages in shared config not observed in resolvedPackages */
   unused: UnusedEntry[];
@@ -155,6 +176,8 @@ export interface ProjectReport {
   mismatched: MismatchedEntry[];
   /** Packages with global state shared without singleton: true */
   singletonRisks: SingletonRiskEntry[];
+  /** Packages declared with eager: true but without singleton: true */
+  eagerRisks: EagerRiskEntry[];
   summary: {
     totalShared: number;
     usedShared: number;
@@ -162,6 +185,7 @@ export interface ProjectReport {
     candidatesCount: number;
     mismatchedCount: number;
     singletonRisksCount: number;
+    eagerRisksCount: number;
   };
 }
 
