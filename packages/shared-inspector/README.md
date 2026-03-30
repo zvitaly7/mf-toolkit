@@ -1,11 +1,11 @@
 # `@mf-toolkit/shared-inspector`
 
+[![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![status](https://img.shields.io/badge/status-in_development-orange)](https://github.com/zvitaly7/mf-toolkit)
-[![version](https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey)](https://github.com/zvitaly7/mf-toolkit)
 [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> ⚠️ **Work in progress.** This package is feature-complete and fully tested (179 tests) but has not yet been published to npm. The API is stable but may receive minor changes before the official release. Do not use in production until v0.1.0 is tagged.
+> ⚠️ **Work in progress.** This package is fully tested (179 tests) and published to npm. The API is stable but may receive minor changes before the official stable release.
 
 Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
 
