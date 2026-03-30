@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> ⚠️ **Work in progress.** This package is fully tested (179 tests) and published to npm. The API is stable but may receive minor changes before the official stable release.
+> ⚠️ **Work in progress.** This package is fully tested (179 tests) and published to npm (`0.1.1`). The API is stable but may receive minor changes before the official stable release.
 
 Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
 
