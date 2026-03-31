@@ -10,6 +10,7 @@ export { inspect } from './inspect.js';
 export { formatReport, type FormatReportContext } from './reporter/format-report.js';
 export { formatFederationReport } from './reporter/format-federation-report.js';
 export { writeReport, writeManifest } from './reporter/write-report.js';
+export { scoreProjectReport, scoreFederationReport, type RiskScore } from './reporter/scoring.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type {
