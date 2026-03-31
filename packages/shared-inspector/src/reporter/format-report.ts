@@ -18,7 +18,7 @@ export interface FormatReportContext {
  */
 export function formatReport(report: ProjectReport, ctx?: FormatReportContext): string {
   const lines: string[] = [];
-  const { unused, candidates, mismatched, singletonRisks, summary } = report;
+  const { unused, candidates, mismatched, singletonRisks, eagerRisks, summary } = report;
 
   // Header
   const header = buildHeader(ctx);
@@ -28,7 +28,8 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     mismatched.length > 0 ||
     unused.length > 0 ||
     candidates.length > 0 ||
-    singletonRisks.length > 0;
+    singletonRisks.length > 0 ||
+    eagerRisks.length > 0;
 
   if (!hasFindings) {
     lines.push('  No issues found. Shared config looks good.');
@@ -74,11 +75,20 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     lines.push('');
   }
 
-  // ── 5. Summary ────────────────────────────────────────────────────────────
+  // ── 5. Eager risks ────────────────────────────────────────────────────────
+  if (eagerRisks.length > 0) {
+    lines.push('  Eager risks (add singleton: true or remove eager: true):');
+    for (const r of eagerRisks) {
+      lines.push(`    ⚠ ${r.package} — eager: true without singleton: true, risk of duplicate instances`);
+    }
+    lines.push('');
+  }
+
+  // ── 6. Summary ────────────────────────────────────────────────────────────
   lines.push(
     `  Total: ${summary.totalShared} shared, ${summary.usedShared} used, ` +
     `${summary.unusedCount} unused, ${summary.candidatesCount} candidates, ` +
-    `${summary.mismatchedCount} mismatch`,
+    `${summary.mismatchedCount} mismatch, ${summary.eagerRisksCount} eager risks`,
   );
   lines.push('');
 

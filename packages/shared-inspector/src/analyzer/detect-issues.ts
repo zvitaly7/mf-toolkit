@@ -4,6 +4,7 @@ import type {
   CandidateEntry,
   MismatchedEntry,
   SingletonRiskEntry,
+  EagerRiskEntry,
 } from '../types.js';
 import type { ResolvedPolicy } from './policy.js';
 
@@ -32,6 +33,7 @@ export interface DetectIssuesResult {
   candidates: CandidateEntry[];
   mismatched: MismatchedEntry[];
   singletonRisks: SingletonRiskEntry[];
+  eagerRisks: EagerRiskEntry[];
 }
 
 // ─── Core detection ───────────────────────────────────────────────────────────
@@ -95,5 +97,12 @@ export function detectIssues(input: DetectIssuesInput): DetectIssuesResult {
     .filter(([pkg, config]) => input.policy.singletonRisks.has(pkg) && !config.singleton)
     .map(([pkg]) => ({ package: pkg }));
 
-  return { unused, candidates, mismatched, singletonRisks };
+  // Eager risks: eager: true without singleton: true.
+  // Eager-loading without singleton can produce duplicate module instances
+  // when multiple MFs initialise the same package before version negotiation.
+  const eagerRisks: EagerRiskEntry[] = sharedEntries
+    .filter(([_, config]) => config.eager === true && config.singleton !== true)
+    .map(([pkg]) => ({ package: pkg }));
+
+  return { unused, candidates, mismatched, singletonRisks, eagerRisks };
 }

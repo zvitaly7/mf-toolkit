@@ -26,6 +26,8 @@ export async function buildProjectManifest(
     packageJsonPath = './package.json',
     extensions = DEFAULT_EXTENSIONS,
     ignore,
+    tsconfigPath,
+    workspacePackages,
   } = options;
 
   const resolvedPkgJsonPath = resolve(packageJsonPath);
@@ -39,10 +41,10 @@ export async function buildProjectManifest(
   let effectiveDepth: 'direct' | 'local-graph';
 
   if (depth === 'local-graph') {
-    occurrences = await traverseLocalModules({ sourceDirs, extensions, ignore });
+    occurrences = await traverseLocalModules({ sourceDirs, extensions, ignore, tsconfigPath, workspacePackages });
     effectiveDepth = 'local-graph';
   } else {
-    occurrences = await collectImports({ sourceDirs, extensions, ignore });
+    occurrences = await collectImports({ sourceDirs, extensions, ignore, workspacePackages });
     effectiveDepth = 'direct';
   }
 

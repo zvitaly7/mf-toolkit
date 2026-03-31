@@ -4,6 +4,7 @@ import { buildProjectManifest } from '../collector/build-project-manifest.js';
 import { analyzeProject } from '../analyzer/analyze-project.js';
 import { formatReport } from '../reporter/format-report.js';
 import { writeManifest } from '../reporter/write-report.js';
+import { extractSharedFromCompiler } from '../collector/extract-mfp-shared.js';
 
 // ─── Minimal webpack type interfaces ─────────────────────────────────────────
 // Avoids a hard dependency on webpack — it is a peer dep.
@@ -63,11 +64,13 @@ export class MfSharedInspectorPlugin {
         const {
           sourceDirs,
           depth = 'local-graph',
-          sharedConfig,
+          sharedConfig: explicitSharedConfig,
           kind,
           packageJsonPath,
           extensions,
           ignore,
+          tsconfigPath,
+          workspacePackages,
           parser,
           analysis,
           warn = true,
@@ -93,6 +96,19 @@ export class MfSharedInspectorPlugin {
           : join(compiler.context, outputDir);
 
         try {
+          // Use explicit sharedConfig if provided, otherwise auto-extract from
+          // ModuleFederationPlugin found in compiler.options.plugins
+          const sharedConfig =
+            explicitSharedConfig ?? extractSharedFromCompiler(compiler) ?? {};
+
+          const autoExtracted = !explicitSharedConfig && Object.keys(sharedConfig).length > 0;
+          if (autoExtracted && warn) {
+            console.log(
+              `[${PLUGIN_NAME}] sharedConfig auto-extracted from ModuleFederationPlugin ` +
+              `(${Object.keys(sharedConfig).length} packages)`,
+            );
+          }
+
           const manifest = await buildProjectManifest({
             name,
             sourceDirs: resolvedSourceDirs,
@@ -102,6 +118,8 @@ export class MfSharedInspectorPlugin {
             packageJsonPath: resolvedPkgJson,
             extensions,
             ignore,
+            tsconfigPath,
+            workspacePackages,
             parser,
           });
 
@@ -111,7 +129,8 @@ export class MfSharedInspectorPlugin {
             report.mismatched.length > 0 ||
             report.unused.length > 0 ||
             report.candidates.length > 0 ||
-            report.singletonRisks.length > 0;
+            report.singletonRisks.length > 0 ||
+            report.eagerRisks.length > 0;
 
           if (warn && hasFindings) {
             console.warn(
@@ -151,7 +170,7 @@ export class MfSharedInspectorPlugin {
 
 function shouldFailBuild(
   failOn: 'mismatch' | 'unused' | 'any',
-  report: { mismatched: unknown[]; unused: unknown[]; candidates: unknown[]; singletonRisks: unknown[] },
+  report: { mismatched: unknown[]; unused: unknown[]; candidates: unknown[]; singletonRisks: unknown[]; eagerRisks: unknown[] },
 ): boolean {
   switch (failOn) {
     case 'mismatch': return report.mismatched.length > 0;
@@ -160,7 +179,8 @@ function shouldFailBuild(
       report.mismatched.length > 0 ||
       report.unused.length > 0 ||
       report.candidates.length > 0 ||
-      report.singletonRisks.length > 0
+      report.singletonRisks.length > 0 ||
+      report.eagerRisks.length > 0
     );
   }
 }

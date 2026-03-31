@@ -53,38 +53,52 @@ export function normalizePackageName(specifier: string): string {
 
 /** Strips // and block comments while preserving string literals. */
 function stripComments(source: string): string {
-  let result = '';
+  // Use an array of chunks instead of string concatenation to avoid
+  // O(N²) string allocation behaviour in tight loops over large files.
+  const chunks: string[] = [];
   let i = 0;
+  let segStart = i;
+
+  const flush = (end: number) => {
+    if (end > segStart) chunks.push(source.slice(segStart, end));
+  };
 
   while (i < source.length) {
     if (source[i] === '"' || source[i] === "'" || source[i] === '`') {
       const quote = source[i];
-      result += source[i++];
+      i++;
       while (i < source.length && source[i] !== quote) {
-        if (source[i] === '\\') result += source[i++];
-        if (i < source.length) result += source[i++];
+        if (source[i] === '\\') i++;
+        if (i < source.length) i++;
       }
-      if (i < source.length) result += source[i++];
+      if (i < source.length) i++;
     } else if (source[i] === '/' && source[i + 1] === '*') {
+      flush(i);
       i += 2;
       while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i++;
       i += 2;
-      result += ' ';
+      chunks.push(' ');
+      segStart = i;
     } else if (source[i] === '/' && source[i + 1] === '/') {
+      flush(i);
       i += 2;
       while (i < source.length && source[i] !== '\n') i++;
+      segStart = i;
     } else {
-      result += source[i++];
+      i++;
     }
   }
 
-  return result;
+  flush(i);
+  return chunks.join('');
 }
 
 /** Collapses multiline import/export statements to single lines. */
 function normalizeMultiline(source: string): string {
+  // [^;{}]* is bounded by statement terminators — avoids catastrophic
+  // backtracking that [\s\S]*? causes on files with many import keywords.
   return source.replace(
-    /(?:import|export)\s[\s\S]*?from\s+['"][^'"]+['"]/g,
+    /(?:import|export)\s[^;{}]*?from\s+['"][^'"]+['"]/g,
     (match) => match.replace(/\s+/g, ' '),
   );
 }
