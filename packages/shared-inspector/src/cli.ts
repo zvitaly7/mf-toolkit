@@ -4,6 +4,7 @@
  *
  * Usage:
  *   mf-inspector [options]                     — project analysis
+ *   mf-inspector [--interactive | -i]          — interactive wizard
  *   mf-inspector federation <manifest> ...     — cross-MF federation analysis
  */
 import { readFileSync } from 'node:fs';
@@ -20,6 +21,7 @@ import type { SharedDepConfig, ProjectReport } from './types.js';
 
 export interface CliArgs {
   command: 'project' | 'federation' | 'help';
+  interactive: boolean;
   // project
   sourceDirs: string[];
   depth: 'direct' | 'local-graph';
@@ -34,11 +36,16 @@ export interface CliArgs {
   manifestFiles: string[];
 }
 
+// ─── Prompt function type (injectable for tests) ──────────────────────────────
+
+export type PromptFn = (question: string) => Promise<string>;
+
 // ─── Arg parser ───────────────────────────────────────────────────────────────
 
 export function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     command: 'project',
+    interactive: false,
     sourceDirs: [],
     depth: 'local-graph',
     workspacePackages: [],
@@ -67,6 +74,10 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--help':
       case '-h':
         args.command = 'help';
+        break;
+      case '--interactive':
+      case '-i':
+        args.interactive = true;
         break;
       case '--source':
       case '-s':
@@ -99,7 +110,7 @@ export function parseArgs(argv: string[]): CliArgs {
     }
   }
 
-  if (args.sourceDirs.length === 0) {
+  if (!args.interactive && args.sourceDirs.length === 0) {
     args.sourceDirs = ['./src'];
   }
 
@@ -129,10 +140,74 @@ export function shouldFail(report: ProjectReport, failOn: 'mismatch' | 'unused' 
   );
 }
 
+// ─── Interactive wizard ───────────────────────────────────────────────────────
+
+export async function runInteractive(
+  args: CliArgs,
+  write: (s: string) => void,
+  prompt: PromptFn,
+): Promise<CliArgs> {
+  write('\n[MfSharedInspector] Interactive setup\n\n');
+
+  // Source dirs
+  const sourceDirsRaw = await prompt('Source directories to scan (default: ./src): ');
+  args.sourceDirs = sourceDirsRaw.trim()
+    ? sourceDirsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    : ['./src'];
+
+  // Depth
+  const depthRaw = await prompt('Scan depth — direct or local-graph (default: local-graph): ');
+  args.depth = depthRaw.trim() === 'direct' ? 'direct' : 'local-graph';
+
+  // Shared packages
+  const sharedRaw = await prompt('Shared packages — comma-separated names or path to .json (empty to skip): ');
+  args.sharedConfig = sharedRaw.trim() ? parseSharedValue(sharedRaw.trim()) : undefined;
+
+  // tsconfig
+  const tsconfigRaw = await prompt('Path to tsconfig.json for alias resolution (empty to skip): ');
+  args.tsconfigPath = tsconfigRaw.trim() || undefined;
+
+  // workspace packages
+  const wsRaw = await prompt('Workspace packages to exclude, comma-separated (empty to skip): ');
+  args.workspacePackages = wsRaw.trim()
+    ? wsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  // fail-on
+  const failOnRaw = await prompt('Fail build on findings — mismatch / unused / any / none (default: none): ');
+  const failOnVal = failOnRaw.trim();
+  args.failOn = (['mismatch', 'unused', 'any'] as const).includes(failOnVal as never)
+    ? (failOnVal as 'mismatch' | 'unused' | 'any')
+    : undefined;
+
+  // write manifest
+  const writeManifestRaw = await prompt('Write project-manifest.json? (y/N): ');
+  args.writeManifest = writeManifestRaw.trim().toLowerCase() === 'y';
+
+  if (args.writeManifest) {
+    const outputDirRaw = await prompt('Output directory for manifest (default: .): ');
+    args.outputDir = outputDirRaw.trim() || '.';
+  }
+
+  write('\n');
+  return args;
+}
+
+/** Creates a readline-based PromptFn using Node built-ins (no extra deps). */
+export async function makeReadlinePrompt(): Promise<{ prompt: PromptFn; close: () => void }> {
+  const { createInterface } = await import('node:readline/promises');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return {
+    prompt: (question: string) => rl.question(question),
+    close: () => rl.close(),
+  };
+}
+
 // ─── Help text ────────────────────────────────────────────────────────────────
 
 export const HELP = `Usage:
   mf-inspector [options]                     Analyse project shared config
+  mf-inspector --interactive                 Step-by-step interactive wizard
   mf-inspector federation <manifest> ...     Cross-MF federation analysis
 
 Project options:
@@ -145,6 +220,7 @@ Project options:
   --fail-on <rule>             Exit 1 when findings match: mismatch | unused | any
   --write-manifest             Write project-manifest.json to output dir
   --output-dir <dir>           Output directory for manifest (default: .)
+  --interactive, -i            Launch step-by-step wizard instead of flags
   --help, -h                   Show this help
 
 Federation:
@@ -152,6 +228,7 @@ Federation:
 
 Examples:
   mf-inspector
+  mf-inspector --interactive
   mf-inspector --source ./src --shared react,react-dom --fail-on mismatch
   mf-inspector --shared ./shared-config.json --write-manifest
   mf-inspector federation ./manifests/checkout.json ./manifests/catalog.json
@@ -162,8 +239,9 @@ Examples:
 export async function main(
   argv: string[],
   write: (s: string) => void = (s) => process.stdout.write(s),
+  prompt?: PromptFn,
 ): Promise<number> {
-  const args = parseArgs(argv);
+  let args = parseArgs(argv);
 
   if (args.command === 'help') {
     write(HELP);
@@ -172,6 +250,17 @@ export async function main(
 
   if (args.command === 'federation') {
     return runFederation(args, write);
+  }
+
+  if (args.interactive) {
+    let rl: { close: () => void } | undefined;
+    if (!prompt) {
+      const readline = await makeReadlinePrompt();
+      prompt = readline.prompt;
+      rl = readline;
+    }
+    args = await runInteractive(args, write, prompt);
+    rl?.close();
   }
 
   return runProject(args, write);
@@ -244,7 +333,6 @@ async function runFederation(
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-// Run only when executed directly as CLI (not when imported by tests or other modules)
 const moduleUrl = new URL(import.meta.url);
 const scriptUrl = process.argv[1] ? new URL(process.argv[1], 'file://') : null;
 

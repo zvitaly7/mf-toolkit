@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseArgs, parseSharedValue, shouldFail, main, HELP } from '../src/cli.js';
+import { parseArgs, parseSharedValue, shouldFail, runInteractive, main, HELP } from '../src/cli.js';
+import type { CliArgs, PromptFn } from '../src/cli.js';
 import type { ProjectReport } from '../src/types.js';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -322,5 +323,123 @@ describe('main', () => {
     const code = await main(['federation', '--help'], (s) => chunks.push(s));
     expect(code).toBe(0);
     expect(chunks.join('')).toContain('mf-inspector');
+  });
+
+  it('interactive: runs wizard and passes collected args to project runner', async () => {
+    const answers = [
+      './app',          // source dirs
+      'direct',         // depth
+      'react,react-dom',// shared
+      '',               // tsconfig (skip)
+      '',               // workspace packages (skip)
+      'mismatch',       // fail-on
+      'n',              // write manifest
+    ];
+    let i = 0;
+    const mockPrompt: PromptFn = async () => answers[i++] ?? '';
+
+    const code = await main(['--interactive'], () => {}, mockPrompt);
+    expect(code).toBe(0);
+    expect(buildProjectManifest).toHaveBeenCalledWith(expect.objectContaining({
+      sourceDirs: ['./app'],
+      depth: 'direct',
+      sharedConfig: { react: {}, 'react-dom': {} },
+    }));
+  });
+
+  it('interactive: -i flag also triggers wizard', async () => {
+    const answers = ['', '', '', '', '', '', ''];
+    let i = 0;
+    const mockPrompt: PromptFn = async () => answers[i++] ?? '';
+    const code = await main(['-i'], () => {}, mockPrompt);
+    expect(code).toBe(0);
+  });
+});
+
+// ─── runInteractive ───────────────────────────────────────────────────────────
+
+describe('runInteractive', () => {
+  function makeArgs(): CliArgs {
+    return {
+      command: 'project', interactive: true,
+      sourceDirs: [], depth: 'local-graph',
+      workspacePackages: [], writeManifest: false, outputDir: '.', manifestFiles: [],
+    };
+  }
+
+  function makePrompt(answers: string[]): PromptFn {
+    let i = 0;
+    return async () => answers[i++] ?? '';
+  }
+
+  it('uses defaults when all answers are empty', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '']));
+    expect(result.sourceDirs).toEqual(['./src']);
+    expect(result.depth).toBe('local-graph');
+    expect(result.sharedConfig).toBeUndefined();
+    expect(result.tsconfigPath).toBeUndefined();
+    expect(result.workspacePackages).toEqual([]);
+    expect(result.failOn).toBeUndefined();
+    expect(result.writeManifest).toBe(false);
+  });
+
+  it('parses source dirs', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['./src,./lib', '', '', '', '', '', '']));
+    expect(result.sourceDirs).toEqual(['./src', './lib']);
+  });
+
+  it('sets depth to direct', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', 'direct', '', '', '', '', '']));
+    expect(result.depth).toBe('direct');
+  });
+
+  it('parses shared packages', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', 'react,mobx', '', '', '', '']));
+    expect(result.sharedConfig).toEqual({ react: {}, mobx: {} });
+  });
+
+  it('sets tsconfig path', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', './tsconfig.json', '', '', '']));
+    expect(result.tsconfigPath).toBe('./tsconfig.json');
+  });
+
+  it('parses workspace packages', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '@org/a,@org/b', '', '']));
+    expect(result.workspacePackages).toEqual(['@org/a', '@org/b']);
+  });
+
+  it('sets fail-on', async () => {
+    const resultMismatch = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', 'mismatch', '']));
+    expect(resultMismatch.failOn).toBe('mismatch');
+
+    const resultAny = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', 'any', '']));
+    expect(resultAny.failOn).toBe('any');
+  });
+
+  it('ignores unknown fail-on values', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', 'invalid', '']));
+    expect(result.failOn).toBeUndefined();
+  });
+
+  it('sets writeManifest to true on y', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', 'y']));
+    expect(result.writeManifest).toBe(true);
+  });
+
+  it('asks for output dir when writeManifest is y', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', 'y', './dist']));
+    expect(result.writeManifest).toBe(true);
+    expect(result.outputDir).toBe('./dist');
+  });
+
+  it('keeps default output dir when writeManifest answer is y but dir is empty', async () => {
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', 'y', '']));
+    expect(result.outputDir).toBe('.');
+  });
+
+  it('prints header message', async () => {
+    const chunks: string[] = [];
+    await runInteractive(makeArgs(), (s) => chunks.push(s), makePrompt(['', '', '', '', '', '', '']));
+    expect(chunks.join('')).toContain('[MfSharedInspector] Interactive setup');
   });
 });
