@@ -4,6 +4,7 @@ import { HELP } from './help.js';
 import { runInteractive, makeReadlinePrompt } from './interactive.js';
 import { runProject } from './run-project.js';
 import { runFederation } from './run-federation.js';
+import { bold, cyan, gray, red, isTTY } from './colors.js';
 import type { PromptFn } from './types.js';
 
 export { parseArgs, parseSharedValue } from './args.js';
@@ -22,6 +23,12 @@ function getVersion(): string {
   }
 }
 
+function printBanner(write: (s: string) => void, version: string): void {
+  if (!isTTY) return;
+  const v = gray(`v${version}`);
+  write(`\n  ${bold(cyan('mf-inspector'))}  ${v}\n\n`);
+}
+
 export async function main(
   argv: string[],
   write: (s: string) => void = (s) => process.stdout.write(s),
@@ -31,7 +38,7 @@ export async function main(
   try {
     args = parseArgs(argv);
   } catch (err) {
-    write(`Error: ${(err as Error).message}\n`);
+    write(`${red('Error:')} ${(err as Error).message}\n`);
     return 1;
   }
 
@@ -40,10 +47,14 @@ export async function main(
     return 0;
   }
 
+  const version = getVersion();
+
   if (args.command === 'version') {
-    write(`@mf-toolkit/shared-inspector ${getVersion()}\n`);
+    write(`@mf-toolkit/shared-inspector ${version}\n`);
     return 0;
   }
+
+  printBanner(write, version);
 
   if (args.command === 'federation') {
     return runFederation(args, write);

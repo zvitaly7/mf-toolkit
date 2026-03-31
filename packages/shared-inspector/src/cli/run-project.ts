@@ -4,6 +4,8 @@ import { buildProjectManifest } from '../collector/build-project-manifest.js';
 import { analyzeProject } from '../analyzer/analyze-project.js';
 import { formatReport } from '../reporter/format-report.js';
 import { writeManifest } from '../reporter/write-report.js';
+import { createSpinner } from './spinner.js';
+import { colorizeReport } from './colorize-report.js';
 import type { ProjectReport } from '../types.js';
 import type { CliArgs } from './types.js';
 
@@ -33,6 +35,9 @@ export async function runProject(
     }
   }
 
+  const spinner = createSpinner();
+  spinner.start(`Scanning ${args.sourceDirs.join(', ')}`);
+
   const manifest = await buildProjectManifest({
     name,
     sourceDirs: args.sourceDirs,
@@ -42,17 +47,20 @@ export async function runProject(
     workspacePackages: args.workspacePackages,
   });
 
+  spinner.succeed(`Scanned ${manifest.source.filesScanned} files`);
+
   const report = analyzeProject(manifest);
 
-  write(formatReport(report, {
+  write(colorizeReport(formatReport(report, {
     name: manifest.project.name,
     depth: manifest.source.depth,
     filesScanned: manifest.source.filesScanned,
-  }));
+  })));
 
   if (args.writeManifest) {
     const outPath = resolve(args.outputDir, 'project-manifest.json');
     await writeManifest(manifest, outPath);
+    write(`\n  Manifest written to ${outPath}\n`);
   }
 
   if (args.failOn && shouldFail(report, args.failOn)) return 1;
