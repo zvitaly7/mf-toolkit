@@ -7,7 +7,7 @@ export { analyzeFederation } from './analyzer/analyze-federation.js';
 export { inspect } from './inspect.js';
 
 // ─── Reporter ─────────────────────────────────────────────────────────────────
-export { formatReport } from './reporter/format-report.js';
+export { formatReport, type FormatReportContext } from './reporter/format-report.js';
 export { formatFederationReport } from './reporter/format-federation-report.js';
 export { writeReport, writeManifest } from './reporter/write-report.js';
 
