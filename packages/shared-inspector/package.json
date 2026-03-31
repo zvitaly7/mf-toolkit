@@ -1,7 +1,7 @@
 {
   "name": "@mf-toolkit/shared-inspector",
   "version": "0.4.0",
-  "description": "Prevent duplicate React, version conflicts, and bundle bloat in microfrontends.",
+  "description": "Stop debugging Module Federation in production. Audit shared config at build time.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "type": "module",
