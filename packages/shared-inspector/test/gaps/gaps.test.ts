@@ -108,7 +108,7 @@ describe('gap 1: eager risks', () => {
       },
     };
     const output = formatReport(report);
-    expect(output).toContain('Eager risks');
+    expect(output).toContain('Eager Risk — react');
     expect(output).toContain('react');
     expect(output).toContain('eager: true without singleton: true');
   });
