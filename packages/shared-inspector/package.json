@@ -1,10 +1,13 @@
 {
   "name": "@mf-toolkit/shared-inspector",
-  "version": "0.1.0",
+  "version": "0.3.2",
   "description": "Build-time shared dependency analyzer for Module Federation.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "mf-inspector": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

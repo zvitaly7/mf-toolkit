@@ -40,6 +40,20 @@ export interface CollectorOptions {
   extensions?: string[];
   /** Packages to exclude from scan results (supports glob: '@company/*') */
   ignore?: string[];
+  /**
+   * Path to tsconfig.json for resolving TypeScript path aliases (e.g. '@app/*').
+   * When provided, aliased imports are followed during local-graph traversal
+   * just like relative imports — packages behind aliases become visible.
+   * @default undefined (aliases not resolved)
+   */
+  tsconfigPath?: string;
+  /**
+   * Local workspace package names to treat as internal (not external packages).
+   * Imports matching these names are excluded from resolvedPackages.
+   * Supports exact names and '@scope/*' globs.
+   * @example ['@my-org/design-system', '@my-org/*']
+   */
+  workspacePackages?: string[];
   /** Parser strategy. @default 'regex' */
   parser?: ParserStrategy;
 }
@@ -146,6 +160,13 @@ export interface SingletonRiskEntry {
   package: string;
 }
 
+export interface EagerRiskEntry {
+  /** Package declared with eager: true but without singleton: true.
+   *  Eager-loading without singleton can cause duplicate module instances
+   *  when multiple MFs load the same package before negotiation completes. */
+  package: string;
+}
+
 export interface ProjectReport {
   /** Packages in shared config not observed in resolvedPackages */
   unused: UnusedEntry[];
@@ -155,6 +176,8 @@ export interface ProjectReport {
   mismatched: MismatchedEntry[];
   /** Packages with global state shared without singleton: true */
   singletonRisks: SingletonRiskEntry[];
+  /** Packages declared with eager: true but without singleton: true */
+  eagerRisks: EagerRiskEntry[];
   summary: {
     totalShared: number;
     usedShared: number;
@@ -162,12 +185,98 @@ export interface ProjectReport {
     candidatesCount: number;
     mismatchedCount: number;
     singletonRisksCount: number;
+    eagerRisksCount: number;
+  };
+}
+
+// ─── Federation analyzer (v0.2) ──────────────────────────────────────────────
+
+export interface FederationAnalysisOptions {
+  /**
+   * Packages that are always expected to be shared across all MFs.
+   * Used to strengthen ghost-sharing detection.
+   * @default ['react', 'react-dom']
+   */
+  alwaysShared?: string[];
+}
+
+/**
+ * Package shared by one MF but absent from shared config in all other MFs.
+ * Creates one-sided coupling with no federation benefit.
+ */
+export interface GhostShareEntry {
+  package: string;
+  /** MF that declares this package in shared config */
+  sharedBy: string;
+  /** MFs that also use the package but don't declare it in shared */
+  usedUnsharedBy: string[];
+}
+
+/**
+ * Package used by one or more remotes but not declared in shared by any MF.
+ * Each MF bundles its own copy — potential duplication.
+ */
+export interface HostGapEntry {
+  package: string;
+  /** MFs that use the package without any shared declaration */
+  missingIn: string[];
+}
+
+/**
+ * Package where different MFs declare incompatible requiredVersion ranges.
+ * Module Federation singleton resolution will fail silently.
+ */
+export interface VersionConflictEntry {
+  package: string;
+  /** Map of MF name → requiredVersion declared in that MF's shared config */
+  versions: Record<string, string>;
+}
+
+/**
+ * Package where some MFs declare singleton: true and others don't.
+ * Inconsistent singleton flags cause unpredictable MF negotiation.
+ */
+export interface SingletonMismatchEntry {
+  package: string;
+  /** MFs that declare singleton: true */
+  singletonIn: string[];
+  /** MFs that declare the package in shared but without singleton: true */
+  nonSingletonIn: string[];
+}
+
+export interface FederationReport {
+  /**
+   * Packages in shared config of one MF that no other MF shares or uses.
+   * Safe to remove from shared — only creates artificial coupling.
+   */
+  ghostShares: GhostShareEntry[];
+  /**
+   * Packages used across MFs but not declared in shared by anyone.
+   * Each MF pays the full bundle cost independently.
+   */
+  hostGaps: HostGapEntry[];
+  /**
+   * Packages with conflicting requiredVersion across MFs.
+   * MF singleton negotiation will pick one version and silently break others.
+   */
+  versionConflicts: VersionConflictEntry[];
+  /**
+   * Packages where singleton flag is inconsistent across MFs.
+   * Risk of duplicate instances in production.
+   */
+  singletonMismatches: SingletonMismatchEntry[];
+  summary: {
+    totalManifests: number;
+    ghostSharesCount: number;
+    hostGapsCount: number;
+    versionConflictsCount: number;
+    singletonMismatchesCount: number;
   };
 }
 
 // ─── Webpack plugin ───────────────────────────────────────────────────────────
 
-export interface WebpackPluginOptions extends Omit<CollectorOptions, 'name' | 'sharedConfig'> {
+export interface WebpackPluginOptions extends Omit<CollectorOptions, 'name'> {
   /** Policy options for the analyzer */
   analysis?: AnalysisOptions;
   /** Print warnings to console. @default true */

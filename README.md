@@ -54,47 +54,71 @@ new MfSpriteWebpackPlugin({
 
 ### 🔬 MF Shared Dependency Analyser — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
 
-<img src="https://img.shields.io/badge/status-in_development-orange" alt="in development" />
-<img src="https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey" alt="unreleased" />
-<img src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js" alt="node ≥18" />
-
-> ⚠️ **Work in progress.** The package is feature-complete and tested but not yet published to npm. API may change before the stable release.
+[![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
+[![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
 **Your `shared` config is wrong — and you don't know it yet.**
 
 Module Federation teams manually manage `shared` dependencies and silently ship 10× React, broken singleton chains, and ghost packages that couple independent teams for no reason.
 
-`shared-inspector` is a build-time analyser that catches all three mistakes before they reach production:
+`shared-inspector` is a build-time analyser that catches these mistakes before they reach production — both per-project and across the entire federation:
 
 - 🗑️ **Over-sharing** — packages declared in `shared` that no file actually imports
 - 📦 **Under-sharing** — packages used by host and remote but missing from `shared` (each MF bundles its own copy)
 - ⚠️ **Version mismatch** — `requiredVersion` doesn't satisfy installed version → silent fallback to local bundle → "Invalid hook call" in prod
+- 🔗 **Cross-MF conflicts** — version ranges with no overlap, inconsistent singleton flags, ghost shares, host gaps
 
 ```bash
-# not yet on npm — available after merge to main
 npm install @mf-toolkit/shared-inspector --save-dev
 ```
 
+```bash
+# Zero-config CLI — auto-reads project name and scans ./src
+npx @mf-toolkit/shared-inspector
+
+# Interactive wizard — step-by-step setup, no flags needed
+npx @mf-toolkit/shared-inspector --interactive
+
+# Fail CI on version mismatches
+npx @mf-toolkit/shared-inspector --shared react,react-dom --fail-on mismatch
+
+# Cross-MF analysis from saved manifests
+npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
+```
+
 ```ts
-import { buildProjectManifest, analyzeProject } from '@mf-toolkit/shared-inspector';
+// Webpack plugin — sharedConfig auto-extracted from ModuleFederationPlugin, no duplication
+new MfSharedInspectorPlugin({
+  sourceDirs: ['./src'],
+  warn: true,
+  writeManifest: true, // writes project-manifest.json per MF
+});
+
+// Programmatic API — per-project analysis
+import { buildProjectManifest, analyzeProject, analyzeFederation } from '@mf-toolkit/shared-inspector';
 
 const manifest = await buildProjectManifest({
   name: 'checkout',
   sourceDirs: ['./src'],
-  sharedConfig: { react: { singleton: true, requiredVersion: '^19.0.0' }, lodash: {} },
+  sharedConfig: { react: { singleton: true, requiredVersion: '^18.0.0' }, lodash: {} },
 });
-
 const report = analyzeProject(manifest);
-// report.unused    → [{ package: 'lodash', singleton: false }]
-// report.mismatched → [{ package: 'react', configured: '^19.0.0', installed: '18.3.1' }]
+// report.unused     → [{ package: 'lodash', singleton: false }]
+// report.mismatched → [{ package: 'react', configured: '^18.0.0', installed: '18.3.1' }]
+
+// Cross-MF federation analysis
+const fedReport = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
+// fedReport.versionConflicts → [{ package: 'react', versions: { checkout: '^17', catalog: '^18' } }]
+// fedReport.ghostShares      → [{ package: 'lodash', sharedBy: 'cart', usedUnsharedBy: [] }]
 ```
 
 **What it does:**
 
+- ⚡ **CLI** — `npx @mf-toolkit/shared-inspector` with interactive wizard, zero config required
 - 🔍 Two scan depths — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
 - 🧠 Detects packages hidden behind `export { X } from 'pkg'` chains that direct-mode tools miss
-- 🔌 Webpack plugin — runs after each compilation, optionally fails the build (`failOn: 'mismatch'`)
-- 📊 Build manifest for CI — each MF writes `project-manifest.json` for cross-team aggregation (v0.2)
+- 🔌 Webpack plugin — auto-extracts `shared` from `ModuleFederationPlugin`, optionally fails the build (`failOn: 'mismatch'`)
+- 📊 Build manifest for CI — each MF writes `project-manifest.json`, then `analyzeFederation()` aggregates N manifests for cross-team analysis
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
 

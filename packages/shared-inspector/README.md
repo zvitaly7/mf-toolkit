@@ -1,11 +1,8 @@
 # `@mf-toolkit/shared-inspector`
 
-<img src="https://img.shields.io/badge/status-in_development-orange" alt="in development" />
-<img src="https://img.shields.io/badge/version-0.1.0_unreleased-lightgrey" alt="unreleased" />
-[![license](https://img.shields.io/badge/license-MIT-blue)](../../LICENSE)
-[![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
-
-> ⚠️ **Work in progress.** This package is feature-complete and fully tested (179 tests) but has not yet been published to npm. The API is stable but may receive minor changes before the official release. Do not use in production until v0.1.0 is tagged.
+[![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
+[![license](https://img.shields.io/npm/l/@mf-toolkit/shared-inspector?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
+[![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
 Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
 
@@ -24,6 +21,63 @@ Existing tools (webpack-bundle-analyzer, source-map-explorer) show *what ended u
 ```bash
 npm install --save-dev @mf-toolkit/shared-inspector
 ```
+
+## CLI
+
+The fastest way to get started — no config file, no webpack required:
+
+```bash
+# Analyse the current project (auto-reads name from package.json)
+npx @mf-toolkit/shared-inspector
+
+# Step-by-step interactive wizard — answers guide you through all options
+npx @mf-toolkit/shared-inspector --interactive
+
+# Pass options directly
+npx @mf-toolkit/shared-inspector --source ./src --shared react,react-dom --fail-on mismatch
+
+# Load shared config from a JSON file
+npx @mf-toolkit/shared-inspector --shared ./shared-config.json --write-manifest
+
+# Cross-MF federation analysis from saved manifests
+npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
+```
+
+### Interactive wizard
+
+```
+$ npx @mf-toolkit/shared-inspector --interactive
+
+[MfSharedInspector] Interactive setup
+
+Source directories to scan (default: ./src): 
+Scan depth — direct or local-graph (default: local-graph): 
+Shared packages — comma-separated names or path to .json (empty to skip): react,react-dom,mobx
+Path to tsconfig.json for alias resolution (empty to skip): 
+Workspace packages to exclude, comma-separated (empty to skip): 
+Fail build on findings — mismatch / unused / any / none (default: none): mismatch
+Write project-manifest.json? (y/N): n
+
+[MfSharedInspector] checkout (depth: local-graph, 47 files scanned)
+  ...
+```
+
+### CLI reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--source, -s <dirs>` | `./src` | Source dirs to scan, comma-separated |
+| `--depth <depth>` | `local-graph` | Scan depth: `direct` \| `local-graph` |
+| `--shared <packages\|file>` | — | Comma-separated package names or path to `.json` config |
+| `--tsconfig <path>` | — | tsconfig.json for path alias resolution |
+| `--workspace-packages <pkgs>` | — | Comma-separated workspace packages to exclude |
+| `--name <name>` | auto from `package.json` | Project name |
+| `--fail-on <rule>` | — | Exit 1 when findings match: `mismatch` \| `unused` \| `any` |
+| `--write-manifest` | `false` | Write `project-manifest.json` to output dir |
+| `--output-dir <dir>` | `.` | Output directory for manifest |
+| `--interactive, -i` | — | Launch step-by-step wizard |
+| `--version, -v` | — | Print version and exit |
+| `--help, -h` | — | Show help |
 
 ## Quick start
 
@@ -78,6 +132,8 @@ const report = await inspect({
 
 ### Webpack plugin
 
+`sharedConfig` is optional — the plugin auto-extracts it from `ModuleFederationPlugin` when not provided:
+
 ```typescript
 import { MfSharedInspectorPlugin } from '@mf-toolkit/shared-inspector/webpack';
 
@@ -88,18 +144,23 @@ module.exports = {
       shared: { react: { singleton: true }, mobx: { singleton: true } },
     }),
 
+    // sharedConfig not needed — auto-extracted from ModuleFederationPlugin above
     new MfSharedInspectorPlugin({
       sourceDirs: ['./src'],
-      sharedConfig: {
-        react: { singleton: true, requiredVersion: '^19.0.0' },
-        mobx: { singleton: true },
-      },
-      tsconfigPath: './tsconfig.json',   // resolve @alias/* imports
       warn: true,
-      writeManifest: true,              // writes project-manifest.json for CI
+      writeManifest: true, // writes project-manifest.json for CI aggregation
     }),
   ],
 };
+```
+
+Pass `sharedConfig` explicitly to override auto-extraction:
+
+```typescript
+new MfSharedInspectorPlugin({
+  sourceDirs: ['./src'],
+  sharedConfig: { react: { singleton: true, requiredVersion: '^18.0.0' } },
+})
 ```
 
 ## Analysis depth
@@ -197,7 +258,38 @@ jobs:
           path: project-manifest.json
 ```
 
-`analyzeFederation()` (v0.2) will accept N manifests and detect cross-MF issues: ghost sharing, host gaps, version conflicts.
+Each MF manifest can then be aggregated for cross-team analysis:
+
+```typescript
+import { analyzeFederation, formatFederationReport } from '@mf-toolkit/shared-inspector';
+
+const report = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
+console.log(formatFederationReport(report));
+```
+
+```
+[MfSharedInspector] federation analysis (3 MFs)
+
+  Version conflicts (singleton negotiation will fail):
+    ⚠ react — checkout: ^17.0.0, catalog: ^18.0.0
+
+  Singleton mismatches (add singleton: true to all MFs):
+    ⚠ mobx — singleton in [checkout], not singleton in [catalog, cart]
+
+  Host gaps (add to shared — each MF bundles its own copy):
+    → axios — used by [checkout, catalog], not in shared
+
+  Ghost shares (remove from shared — no other MF benefits):
+    ✗ lodash — shared only by cart, unused by all other MFs
+
+  Total: 3 MFs, 1 version conflicts, 1 singleton mismatches, 1 host gaps, 1 ghost shares
+```
+
+Or use the CLI directly:
+
+```bash
+npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
+```
 
 ## API reference
 
@@ -224,7 +316,37 @@ jobs:
 | `additionalCandidates` | `string[]` | `[]` | Extend built-in candidates list |
 | `additionalSingletonRisks` | `string[]` | `[]` | Extend built-in singleton-risk list |
 
+### `analyzeFederation(manifests, options?)`
+
+Accepts N `ProjectManifest` objects (one per microfrontend) and returns a `FederationReport`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `alwaysShared` | `string[]` | `['react','react-dom']` | Exclude from ghost/gap detection |
+
+### `formatFederationReport(report)`
+
+Formats a `FederationReport` as a human-readable terminal string.
+
+### `MfSharedInspectorPlugin` options
+
+Extends all `buildProjectManifest` options (except `name`, auto-resolved from compiler) plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sourceDirs` | `string[]` | — | Directories to scan |
+| `sharedConfig` | `Record<string, SharedDepConfig>` | auto-extracted | Override auto-extraction from `ModuleFederationPlugin` |
+| `tsconfigPath` | `string` | `undefined` | tsconfig.json for path alias resolution |
+| `workspacePackages` | `string[]` | `[]` | Local monorepo packages to exclude |
+| `warn` | `boolean` | `true` | Print findings to console |
+| `failOn` | `'mismatch' \| 'unused' \| 'any'` | `undefined` | Fail the build when findings match |
+| `writeManifest` | `boolean` | `false` | Write `project-manifest.json` to `outputDir` |
+| `outputDir` | `string` | `'.'` | Directory for manifest output |
+| `analysis` | `AnalysisOptions` | `{}` | Options forwarded to `analyzeProject` |
+
 ## Detection categories
+
+### Per-project (`analyzeProject`)
 
 | Category | Type | Description |
 |----------|------|-------------|
@@ -236,12 +358,21 @@ jobs:
 
 *Within the visibility of the chosen depth.*
 
+### Cross-MF (`analyzeFederation`)
+
+| Category | Type | Description |
+|----------|------|-------------|
+| `versionConflicts` | Deterministic | `requiredVersion` ranges across MFs have no overlap |
+| `singletonMismatches` | Deterministic | `singleton: true` in some MFs, absent in others |
+| `hostGaps` | Heuristic | Package used by 2+ MFs but not declared in `shared` by anyone |
+| `ghostShares` | Heuristic | Package in `shared` of one MF, unused/unshared by all others |
+
 ## Known limitations
 
 - **TypeScript path aliases without `tsconfigPath`**: aliased imports are treated as external package names. Pass `tsconfigPath` to resolve them correctly.
 - **Dynamic imports with variables** (`import(moduleName)`): not analysed — requires runtime information.
 - **Exact tsconfig alias patterns** (non-wildcard, e.g. `"@root": ["."]`): not supported, only `"@alias/*"` wildcard form.
-- **`analyzeFederation()`** (cross-MF analysis): v0.2.
+- **Subclassed `ModuleFederationPlugin`**: auto-extraction matches by constructor name. A custom subclass (`class MyMFP extends ModuleFederationPlugin`) won't be detected — pass `sharedConfig` explicitly in that case.
 
 ## Demo
 
