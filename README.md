@@ -55,7 +55,6 @@ new MfSpriteWebpackPlugin({
 ### 🔬 MF Shared Dependency Analyser — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
-[![status](https://img.shields.io/badge/status-in_development-orange)](https://github.com/zvitaly7/mf-toolkit)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
 > **v0.3.0** — published to npm. API is stable.
@@ -76,22 +75,29 @@ npm install @mf-toolkit/shared-inspector --save-dev
 ```
 
 ```ts
+// Webpack plugin — sharedConfig auto-extracted from ModuleFederationPlugin, no duplication
+new MfSharedInspectorPlugin({
+  sourceDirs: ['./src'],
+  warn: true,
+  writeManifest: true, // writes project-manifest.json per MF
+});
+
+// Programmatic API — per-project analysis
 import { buildProjectManifest, analyzeProject, analyzeFederation } from '@mf-toolkit/shared-inspector';
 
-// Per-project analysis
 const manifest = await buildProjectManifest({
   name: 'checkout',
   sourceDirs: ['./src'],
   sharedConfig: { react: { singleton: true, requiredVersion: '^18.0.0' }, lodash: {} },
 });
 const report = analyzeProject(manifest);
-// report.unused    → [{ package: 'lodash', singleton: false }]
+// report.unused     → [{ package: 'lodash', singleton: false }]
 // report.mismatched → [{ package: 'react', configured: '^18.0.0', installed: '18.3.1' }]
 
 // Cross-MF federation analysis
 const fedReport = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
-// fedReport.versionConflicts  → [{ package: 'react', versions: { checkout: '^17', catalog: '^18' } }]
-// fedReport.ghostShares       → [{ package: 'lodash', sharedBy: 'cart', usedUnsharedBy: [] }]
+// fedReport.versionConflicts → [{ package: 'react', versions: { checkout: '^17', catalog: '^18' } }]
+// fedReport.ghostShares      → [{ package: 'lodash', sharedBy: 'cart', usedUnsharedBy: [] }]
 ```
 
 **What it does:**
