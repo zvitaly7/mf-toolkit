@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> ⚠️ **Work in progress.** This package is fully tested (252 tests) and published to npm. The API is stable but may receive minor changes before the official stable release.
+> **v0.3.0** — published to npm. 252 tests. API is stable; minor changes possible before v1.0.
 
 Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
 
@@ -268,6 +268,22 @@ Accepts N `ProjectManifest` objects (one per microfrontend) and returns a `Feder
 
 Formats a `FederationReport` as a human-readable terminal string.
 
+### `MfSharedInspectorPlugin` options
+
+Extends all `buildProjectManifest` options (except `name`, auto-resolved from compiler) plus:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `sourceDirs` | `string[]` | — | Directories to scan |
+| `sharedConfig` | `Record<string, SharedDepConfig>` | auto-extracted | Override auto-extraction from `ModuleFederationPlugin` |
+| `tsconfigPath` | `string` | `undefined` | tsconfig.json for path alias resolution |
+| `workspacePackages` | `string[]` | `[]` | Local monorepo packages to exclude |
+| `warn` | `boolean` | `true` | Print findings to console |
+| `failOn` | `'mismatch' \| 'unused' \| 'any'` | `undefined` | Fail the build when findings match |
+| `writeManifest` | `boolean` | `false` | Write `project-manifest.json` to `outputDir` |
+| `outputDir` | `string` | `'.'` | Directory for manifest output |
+| `analysis` | `AnalysisOptions` | `{}` | Options forwarded to `analyzeProject` |
+
 ## Detection categories
 
 ### Per-project (`analyzeProject`)
@@ -296,6 +312,7 @@ Formats a `FederationReport` as a human-readable terminal string.
 - **TypeScript path aliases without `tsconfigPath`**: aliased imports are treated as external package names. Pass `tsconfigPath` to resolve them correctly.
 - **Dynamic imports with variables** (`import(moduleName)`): not analysed — requires runtime information.
 - **Exact tsconfig alias patterns** (non-wildcard, e.g. `"@root": ["."]`): not supported, only `"@alias/*"` wildcard form.
+- **Subclassed `ModuleFederationPlugin`**: auto-extraction matches by constructor name. A custom subclass (`class MyMFP extends ModuleFederationPlugin`) won't be detected — pass `sharedConfig` explicitly in that case.
 
 ## Demo
 
