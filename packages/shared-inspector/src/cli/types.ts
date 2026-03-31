@@ -1,7 +1,7 @@
 import type { SharedDepConfig } from '../types.js';
 
 export interface CliArgs {
-  command: 'project' | 'federation' | 'help';
+  command: 'project' | 'federation' | 'help' | 'version';
   interactive: boolean;
   // project
   sourceDirs: string[];
