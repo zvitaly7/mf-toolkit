@@ -57,9 +57,9 @@ new MfSpriteWebpackPlugin({
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
-**Prevent duplicate React, version conflicts, and bundle bloat in microfrontends.**
+**Stop debugging Module Federation in production.**
 
-Module Federation `shared` config breaks in silence — wrong versions ship to production, 10× React ends up in the bundle, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time and tells you exactly what to fix.
+`shared` config breaks in silence — wrong versions ship, 10× React ends up in the bundle, singleton chains collapse, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time. Every finding comes with a risk score and a ready-to-paste fix.
 
 ```bash
 npm install @mf-toolkit/shared-inspector --save-dev
