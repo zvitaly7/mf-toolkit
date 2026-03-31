@@ -5,6 +5,9 @@
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "mf-inspector": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
