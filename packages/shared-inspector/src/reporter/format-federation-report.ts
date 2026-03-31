@@ -1,5 +1,6 @@
 import type { FederationReport, VersionConflictEntry } from '../types.js';
 import { getDiagnostic, buildFixSnippet } from './diagnostics.js';
+import { scoreFederationReport, formatScoreBlock } from './scoring.js';
 
 const HR = '─'.repeat(60);
 
@@ -35,6 +36,8 @@ export function formatFederationReport(report: FederationReport): string {
     lines.push('  ✓  No federation-level issues found. Everything looks consistent.');
     lines.push('');
     lines.push(HR);
+    lines.push(formatScoreBlock(scoreFederationReport(report), 'version conflicts', 'singleton mismatches, host gaps', 'ghost shares'));
+    lines.push('');
     lines.push(`Total: ${summary.totalManifests} MFs analysed, 0 issues.`);
     lines.push('');
     return lines.join('\n');
@@ -94,8 +97,16 @@ export function formatFederationReport(report: FederationReport): string {
     lines.push('');
   }
 
-  // ── 5. Summary ─────────────────────────────────────────────────────────────
+  // ── 5. Score + Summary ───────────────────────────────────────────────────
+  const score = scoreFederationReport(report);
   lines.push(HR);
+  lines.push(formatScoreBlock(
+    score,
+    'version conflicts',
+    'singleton mismatches, host gaps',
+    'ghost shares',
+  ));
+  lines.push('');
   lines.push(
     `Total: ${summary.totalManifests} MFs, ` +
     `${summary.versionConflictsCount} version conflicts, ` +

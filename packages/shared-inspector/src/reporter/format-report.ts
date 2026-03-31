@@ -1,5 +1,6 @@
 import type { ProjectReport } from '../types.js';
 import { getDiagnostic, buildFixSnippet } from './diagnostics.js';
+import { scoreProjectReport, formatScoreBlock } from './scoring.js';
 
 export interface FormatReportContext {
   name?: string;
@@ -109,8 +110,16 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     lines.push('');
   }
 
-  // ── 6. Summary ────────────────────────────────────────────────────────────
+  // ── 6. Score + Summary ───────────────────────────────────────────────────
+  const score = scoreProjectReport(report);
   lines.push(HR);
+  lines.push(formatScoreBlock(
+    score,
+    'version mismatch',
+    'singleton gaps, duplicate libs',
+    'over-sharing',
+  ));
+  lines.push('');
   lines.push(
     `Total: ${summary.totalShared} shared, ${summary.usedShared} used, ` +
     `${summary.unusedCount} unused, ${summary.candidatesCount} candidates, ` +
