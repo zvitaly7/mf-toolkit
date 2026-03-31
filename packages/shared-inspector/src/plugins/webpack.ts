@@ -4,6 +4,7 @@ import { buildProjectManifest } from '../collector/build-project-manifest.js';
 import { analyzeProject } from '../analyzer/analyze-project.js';
 import { formatReport } from '../reporter/format-report.js';
 import { writeManifest } from '../reporter/write-report.js';
+import { extractSharedFromCompiler } from '../collector/extract-mfp-shared.js';
 
 // ─── Minimal webpack type interfaces ─────────────────────────────────────────
 // Avoids a hard dependency on webpack — it is a peer dep.
@@ -63,7 +64,7 @@ export class MfSharedInspectorPlugin {
         const {
           sourceDirs,
           depth = 'local-graph',
-          sharedConfig,
+          sharedConfig: explicitSharedConfig,
           kind,
           packageJsonPath,
           extensions,
@@ -95,6 +96,19 @@ export class MfSharedInspectorPlugin {
           : join(compiler.context, outputDir);
 
         try {
+          // Use explicit sharedConfig if provided, otherwise auto-extract from
+          // ModuleFederationPlugin found in compiler.options.plugins
+          const sharedConfig =
+            explicitSharedConfig ?? extractSharedFromCompiler(compiler) ?? {};
+
+          const autoExtracted = !explicitSharedConfig && Object.keys(sharedConfig).length > 0;
+          if (autoExtracted && warn) {
+            console.log(
+              `[${PLUGIN_NAME}] sharedConfig auto-extracted from ModuleFederationPlugin ` +
+              `(${Object.keys(sharedConfig).length} packages)`,
+            );
+          }
+
           const manifest = await buildProjectManifest({
             name,
             sourceDirs: resolvedSourceDirs,
