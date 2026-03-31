@@ -98,7 +98,7 @@ const fedReport = analyzeFederation([checkoutManifest, catalogManifest, cartMani
 
 - 🔍 Two scan depths — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
 - 🧠 Detects packages hidden behind `export { X } from 'pkg'` chains that direct-mode tools miss
-- 🔌 Webpack plugin — runs after each compilation, optionally fails the build (`failOn: 'mismatch'`)
+- 🔌 Webpack plugin — auto-extracts `shared` from `ModuleFederationPlugin`, optionally fails the build (`failOn: 'mismatch'`)
 - 📊 Build manifest for CI — each MF writes `project-manifest.json`, then `analyzeFederation()` aggregates N manifests for cross-team analysis
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
