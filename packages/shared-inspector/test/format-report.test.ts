@@ -38,43 +38,95 @@ describe('formatReport — header', () => {
     const output = formatReport(makeReport());
     expect(output).toContain('[MfSharedInspector]');
   });
+
+  it('renders horizontal rule after header', () => {
+    const output = formatReport(makeReport());
+    expect(output).toContain('─'.repeat(60));
+  });
 });
 
 // ─── Version mismatch ─────────────────────────────────────────────────────────
 
 describe('formatReport — version mismatch', () => {
-  it('mismatch section appears before unused section', () => {
+  it('mismatch card appears before unused card', () => {
     const report = makeReport({
       mismatched: [{ package: 'react', configured: '^19.0.0', installed: '18.3.1' }],
       unused: [{ package: 'lodash', singleton: false }],
     });
     const output = formatReport(report);
 
-    expect(output.indexOf('Version mismatch')).toBeLessThan(output.indexOf('Unused shared'));
+    expect(output.indexOf('Version Mismatch')).toBeLessThan(output.indexOf('Unused Shared'));
   });
 
-  it('mismatch entry uses ⚠ marker', () => {
+  it('mismatch card shows ⚠ and package name', () => {
     const report = makeReport({
       mismatched: [{ package: 'react', configured: '^19.0.0', installed: '18.3.1' }],
     });
     const output = formatReport(report);
 
-    expect(output).toContain('⚠ react');
+    expect(output).toContain('⚠  Version Mismatch — react');
+  });
+
+  it('mismatch card shows configured and installed versions', () => {
+    const report = makeReport({
+      mismatched: [{ package: 'react', configured: '^19.0.0', installed: '18.3.1' }],
+    });
+    const output = formatReport(report);
+
     expect(output).toContain('^19.0.0');
     expect(output).toContain('18.3.1');
+  });
+
+  it('mismatch card shows risk description', () => {
+    const report = makeReport({
+      mismatched: [{ package: 'react', configured: '^18.0.0', installed: '17.0.2' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('→ Risk:');
+  });
+
+  it('mismatch card shows fix snippet with singleton and requiredVersion', () => {
+    const report = makeReport({
+      mismatched: [{ package: 'react', configured: '^18.0.0', installed: '17.0.2' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('💡 Fix:');
+    expect(output).toContain('singleton: true');
+    expect(output).toContain('requiredVersion: "^18.0.0"');
+  });
+
+  it('shows known risk message for react mismatch', () => {
+    const report = makeReport({
+      mismatched: [{ package: 'react', configured: '^18.0.0', installed: '17.0.2' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('Invalid hook call');
+  });
+
+  it('shows generic risk message for unknown package mismatch', () => {
+    const report = makeReport({
+      mismatched: [{ package: 'some-lib', configured: '^2.0.0', installed: '1.9.0' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('→ Risk:');
+    expect(output).toContain('Version mismatch may cause');
   });
 });
 
 // ─── Unused ───────────────────────────────────────────────────────────────────
 
 describe('formatReport — unused', () => {
-  it('unused entry uses ✗ marker', () => {
+  it('unused card shows ✗ and package name', () => {
     const report = makeReport({
       unused: [{ package: 'lodash', singleton: false }],
     });
     const output = formatReport(report);
 
-    expect(output).toContain('✗ lodash');
+    expect(output).toContain('✗  Unused Shared — lodash');
   });
 
   it('shows singleton note for singleton packages', () => {
@@ -94,18 +146,27 @@ describe('formatReport — unused', () => {
 
     expect(output).toContain('shared without singleton');
   });
+
+  it('shows remove fix hint', () => {
+    const report = makeReport({
+      unused: [{ package: 'lodash', singleton: false }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('Remove "lodash" from shared config');
+  });
 });
 
 // ─── Candidates ───────────────────────────────────────────────────────────────
 
 describe('formatReport — candidates', () => {
-  it('candidate entry uses → marker', () => {
+  it('candidate card shows → and package name', () => {
     const report = makeReport({
       candidates: [{ package: 'mobx', importCount: 12, files: ['src/shared/index.ts'], via: 'direct' }],
     });
     const output = formatReport(report);
 
-    expect(output).toContain('→ mobx');
+    expect(output).toContain('→  Not Shared — mobx');
   });
 
   it('shows via re-export path for reexport candidates', () => {
@@ -121,7 +182,7 @@ describe('formatReport — candidates', () => {
     });
     const output = formatReport(report);
 
-    expect(output).toContain('via re-export');
+    expect(output).toContain('via re-export in');
     expect(output).toContain('src/shared/index.ts');
   });
 
@@ -141,19 +202,99 @@ describe('formatReport — candidates', () => {
     expect(output).toContain('8 imports');
     expect(output).toContain('2 files');
   });
+
+  it('shows risk description for candidate', () => {
+    const report = makeReport({
+      candidates: [{ package: 'mobx', importCount: 5, files: ['src/store.ts'], via: 'direct' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('→ Risk:');
+  });
+
+  it('shows fix snippet with singleton: true for candidate', () => {
+    const report = makeReport({
+      candidates: [{ package: 'mobx', importCount: 5, files: ['src/store.ts'], via: 'direct' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('💡 Fix:');
+    expect(output).toContain('singleton: true');
+  });
+
+  it('shows known risk for mobx candidate', () => {
+    const report = makeReport({
+      candidates: [{ package: 'mobx', importCount: 5, files: ['src/store.ts'], via: 'direct' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('observables');
+  });
 });
 
 // ─── Singleton risks ──────────────────────────────────────────────────────────
 
 describe('formatReport — singleton risks', () => {
-  it('singleton risk entry uses ⚠ marker', () => {
+  it('singleton risk card shows ⚠ and package name', () => {
     const report = makeReport({
       singletonRisks: [{ package: 'mobx' }],
     });
     const output = formatReport(report);
 
-    expect(output).toContain('⚠ mobx');
-    expect(output).toContain('singleton: true recommended');
+    expect(output).toContain('⚠  Singleton Risk — mobx');
+  });
+
+  it('shows singleton: true is missing', () => {
+    const report = makeReport({
+      singletonRisks: [{ package: 'mobx' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('singleton: true is missing');
+  });
+
+  it('shows risk description and fix for singleton risk', () => {
+    const report = makeReport({
+      singletonRisks: [{ package: 'react' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('→ Risk:');
+    expect(output).toContain('💡 Fix:');
+    expect(output).toContain('singleton: true');
+  });
+});
+
+// ─── Eager risks ──────────────────────────────────────────────────────────────
+
+describe('formatReport — eager risks', () => {
+  it('eager risk card shows ⚠ and package name', () => {
+    const report = makeReport({
+      eagerRisks: [{ package: 'react' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('⚠  Eager Risk — react');
+  });
+
+  it('shows eager: true without singleton: true', () => {
+    const report = makeReport({
+      eagerRisks: [{ package: 'react' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('eager: true without singleton: true');
+  });
+
+  it('shows fix snippet with both eager and singleton', () => {
+    const report = makeReport({
+      eagerRisks: [{ package: 'react' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('💡 Fix:');
+    expect(output).toContain('singleton: true');
+    expect(output).toContain('eager: true');
   });
 });
 
@@ -176,6 +317,7 @@ describe('formatReport — summary', () => {
         candidatesCount: 0,
         mismatchedCount: 1,
         singletonRisksCount: 0,
+        eagerRisksCount: 0,
       },
     });
     const output = formatReport(report);
@@ -194,11 +336,43 @@ describe('formatReport — empty report', () => {
     expect(output).toContain('No issues found');
   });
 
-  it('does not render empty sections', () => {
+  it('does not render issue cards when report is empty', () => {
     const output = formatReport(makeReport());
-    expect(output).not.toContain('Version mismatch');
-    expect(output).not.toContain('Unused shared');
-    expect(output).not.toContain('Candidates');
-    expect(output).not.toContain('Singleton risks');
+    expect(output).not.toContain('Version Mismatch');
+    expect(output).not.toContain('Unused Shared');
+    expect(output).not.toContain('Not Shared');
+    expect(output).not.toContain('Singleton Risk');
+    expect(output).not.toContain('Eager Risk');
+  });
+});
+
+// ─── diagnostics integration ──────────────────────────────────────────────────
+
+describe('formatReport — diagnostics integration', () => {
+  it('react-router singleton risk shows navigation risk', () => {
+    const report = makeReport({
+      singletonRisks: [{ package: 'react-router' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('navigation');
+  });
+
+  it('redux candidate shows store risk', () => {
+    const report = makeReport({
+      candidates: [{ package: 'redux', importCount: 3, files: ['src/store.ts'], via: 'direct' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('store');
+  });
+
+  it('styled-components singleton risk shows theme context risk', () => {
+    const report = makeReport({
+      singletonRisks: [{ package: 'styled-components' }],
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('theme');
   });
 });
