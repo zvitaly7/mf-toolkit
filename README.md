@@ -57,8 +57,6 @@ new MfSpriteWebpackPlugin({
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> **v0.3.0** — published to npm. API is stable.
-
 **Your `shared` config is wrong — and you don't know it yet.**
 
 Module Federation teams manually manage `shared` dependencies and silently ship 10× React, broken singleton chains, and ghost packages that couple independent teams for no reason.
