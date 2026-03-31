@@ -56,9 +56,9 @@ new MfSpriteWebpackPlugin({
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![status](https://img.shields.io/badge/status-in_development-orange)](https://github.com/zvitaly7/mf-toolkit)
-<img src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js" alt="node ≥18" />
+[![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> ⚠️ **Work in progress.** The API is stable but may receive minor changes before the official stable release.
+> **v0.3.0** — published to npm. API is stable.
 
 **Your `shared` config is wrong — and you don't know it yet.**
 
