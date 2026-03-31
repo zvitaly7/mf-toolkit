@@ -14,6 +14,7 @@ Project options:
   --write-manifest             Write project-manifest.json to output dir
   --output-dir <dir>           Output directory for manifest (default: .)
   --interactive, -i            Launch step-by-step wizard instead of flags
+  --version, -v                Print version and exit
   --help, -h                   Show this help
 
 Federation:

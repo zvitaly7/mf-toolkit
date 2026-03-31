@@ -22,6 +22,63 @@ Existing tools (webpack-bundle-analyzer, source-map-explorer) show *what ended u
 npm install --save-dev @mf-toolkit/shared-inspector
 ```
 
+## CLI
+
+The fastest way to get started — no config file, no webpack required:
+
+```bash
+# Analyse the current project (auto-reads name from package.json)
+npx @mf-toolkit/shared-inspector
+
+# Step-by-step interactive wizard — answers guide you through all options
+npx @mf-toolkit/shared-inspector --interactive
+
+# Pass options directly
+npx @mf-toolkit/shared-inspector --source ./src --shared react,react-dom --fail-on mismatch
+
+# Load shared config from a JSON file
+npx @mf-toolkit/shared-inspector --shared ./shared-config.json --write-manifest
+
+# Cross-MF federation analysis from saved manifests
+npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
+```
+
+### Interactive wizard
+
+```
+$ npx @mf-toolkit/shared-inspector --interactive
+
+[MfSharedInspector] Interactive setup
+
+Source directories to scan (default: ./src): 
+Scan depth — direct or local-graph (default: local-graph): 
+Shared packages — comma-separated names or path to .json (empty to skip): react,react-dom,mobx
+Path to tsconfig.json for alias resolution (empty to skip): 
+Workspace packages to exclude, comma-separated (empty to skip): 
+Fail build on findings — mismatch / unused / any / none (default: none): mismatch
+Write project-manifest.json? (y/N): n
+
+[MfSharedInspector] checkout (depth: local-graph, 47 files scanned)
+  ...
+```
+
+### CLI reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--source, -s <dirs>` | `./src` | Source dirs to scan, comma-separated |
+| `--depth <depth>` | `local-graph` | Scan depth: `direct` \| `local-graph` |
+| `--shared <packages\|file>` | — | Comma-separated package names or path to `.json` config |
+| `--tsconfig <path>` | — | tsconfig.json for path alias resolution |
+| `--workspace-packages <pkgs>` | — | Comma-separated workspace packages to exclude |
+| `--name <name>` | auto from `package.json` | Project name |
+| `--fail-on <rule>` | — | Exit 1 when findings match: `mismatch` \| `unused` \| `any` |
+| `--write-manifest` | `false` | Write `project-manifest.json` to output dir |
+| `--output-dir <dir>` | `.` | Output directory for manifest |
+| `--interactive, -i` | — | Launch step-by-step wizard |
+| `--version, -v` | — | Print version and exit |
+| `--help, -h` | — | Show help |
+
 ## Quick start
 
 ### Programmatic API (two-phase)
@@ -226,6 +283,12 @@ console.log(formatFederationReport(report));
     ✗ lodash — shared only by cart, unused by all other MFs
 
   Total: 3 MFs, 1 version conflicts, 1 singleton mismatches, 1 host gaps, 1 ghost shares
+```
+
+Or use the CLI directly:
+
+```bash
+npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
 ```
 
 ## API reference

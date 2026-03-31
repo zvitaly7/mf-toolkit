@@ -128,6 +128,19 @@ describe('parseArgs', () => {
     expect(parseArgs(['-h']).command).toBe('help');
   });
 
+  it('parses --version / -v', () => {
+    expect(parseArgs(['--version']).command).toBe('version');
+    expect(parseArgs(['-v']).command).toBe('version');
+  });
+
+  it('throws on invalid --depth value', () => {
+    expect(() => parseArgs(['--depth', 'invalid'])).toThrow('Invalid --depth value "invalid"');
+  });
+
+  it('throws on invalid --fail-on value', () => {
+    expect(() => parseArgs(['--fail-on', 'wrong'])).toThrow('Invalid --fail-on value "wrong"');
+  });
+
   it('parses federation command with manifest files', () => {
     const args = parseArgs(['federation', 'a.json', 'b.json']);
     expect(args.command).toBe('federation');
@@ -212,6 +225,34 @@ describe('main', () => {
   });
 
   afterEach(() => vi.clearAllMocks());
+
+  it('--version prints version string and returns 0', async () => {
+    const chunks: string[] = [];
+    const code = await main(['--version'], (s) => chunks.push(s));
+    expect(code).toBe(0);
+    expect(chunks.join('')).toContain('@mf-toolkit/shared-inspector');
+  });
+
+  it('-v prints version string and returns 0', async () => {
+    const chunks: string[] = [];
+    const code = await main(['-v'], (s) => chunks.push(s));
+    expect(code).toBe(0);
+    expect(chunks.join('')).toContain('@mf-toolkit/shared-inspector');
+  });
+
+  it('returns 1 and prints error on invalid --depth', async () => {
+    const chunks: string[] = [];
+    const code = await main(['--depth', 'bad'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('Invalid --depth');
+  });
+
+  it('returns 1 and prints error on invalid --fail-on', async () => {
+    const chunks: string[] = [];
+    const code = await main(['--fail-on', 'bad'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('Invalid --fail-on');
+  });
 
   it('--help prints help and returns 0', async () => {
     const chunks: string[] = [];
@@ -316,6 +357,13 @@ describe('main', () => {
     const code = await main(['federation'], (s) => chunks.push(s));
     expect(code).toBe(1);
     expect(chunks.join('')).toContain('Error');
+  });
+
+  it('federation: returns 1 when manifest file does not exist', async () => {
+    const chunks: string[] = [];
+    const code = await main(['federation', 'does-not-exist.json'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('cannot read file');
   });
 
   it('federation: prints help and returns 0', async () => {

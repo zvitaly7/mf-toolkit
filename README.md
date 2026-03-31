@@ -72,6 +72,20 @@ Module Federation teams manually manage `shared` dependencies and silently ship 
 npm install @mf-toolkit/shared-inspector --save-dev
 ```
 
+```bash
+# Zero-config CLI — auto-reads project name and scans ./src
+npx @mf-toolkit/shared-inspector
+
+# Interactive wizard — step-by-step setup, no flags needed
+npx @mf-toolkit/shared-inspector --interactive
+
+# Fail CI on version mismatches
+npx @mf-toolkit/shared-inspector --shared react,react-dom --fail-on mismatch
+
+# Cross-MF analysis from saved manifests
+npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
+```
+
 ```ts
 // Webpack plugin — sharedConfig auto-extracted from ModuleFederationPlugin, no duplication
 new MfSharedInspectorPlugin({
@@ -100,6 +114,7 @@ const fedReport = analyzeFederation([checkoutManifest, catalogManifest, cartMani
 
 **What it does:**
 
+- ⚡ **CLI** — `npx @mf-toolkit/shared-inspector` with interactive wizard, zero config required
 - 🔍 Two scan depths — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
 - 🧠 Detects packages hidden behind `export { X } from 'pkg'` chains that direct-mode tools miss
 - 🔌 Webpack plugin — auto-extracts `shared` from `ModuleFederationPlugin`, optionally fails the build (`failOn: 'mismatch'`)

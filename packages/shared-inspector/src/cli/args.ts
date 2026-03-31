@@ -3,6 +3,9 @@ import { resolve } from 'node:path';
 import type { CliArgs } from './types.js';
 import type { SharedDepConfig } from '../types.js';
 
+const VALID_DEPTHS = new Set(['direct', 'local-graph']);
+const VALID_FAIL_ON = new Set(['mismatch', 'unused', 'any']);
+
 export function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     command: 'project',
@@ -36,6 +39,10 @@ export function parseArgs(argv: string[]): CliArgs {
       case '-h':
         args.command = 'help';
         break;
+      case '--version':
+      case '-v':
+        args.command = 'version';
+        break;
       case '--interactive':
       case '-i':
         args.interactive = true;
@@ -44,9 +51,14 @@ export function parseArgs(argv: string[]): CliArgs {
       case '-s':
         args.sourceDirs.push(...(argv[++i] ?? '').split(',').filter(Boolean));
         break;
-      case '--depth':
-        args.depth = (argv[++i] as 'direct' | 'local-graph') ?? 'local-graph';
+      case '--depth': {
+        const val = argv[++i] ?? '';
+        if (!VALID_DEPTHS.has(val)) {
+          throw new Error(`Invalid --depth value "${val}". Expected: direct | local-graph`);
+        }
+        args.depth = val as 'direct' | 'local-graph';
         break;
+      }
       case '--shared':
         args.sharedConfig = parseSharedValue(argv[++i] ?? '');
         break;
@@ -56,9 +68,14 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--workspace-packages':
         args.workspacePackages.push(...(argv[++i] ?? '').split(',').filter(Boolean));
         break;
-      case '--fail-on':
-        args.failOn = argv[++i] as 'mismatch' | 'unused' | 'any';
+      case '--fail-on': {
+        const val = argv[++i] ?? '';
+        if (!VALID_FAIL_ON.has(val)) {
+          throw new Error(`Invalid --fail-on value "${val}". Expected: mismatch | unused | any`);
+        }
+        args.failOn = val as 'mismatch' | 'unused' | 'any';
         break;
+      }
       case '--write-manifest':
         args.writeManifest = true;
         break;
