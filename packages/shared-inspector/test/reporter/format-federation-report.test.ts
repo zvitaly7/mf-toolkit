@@ -36,6 +36,11 @@ describe('formatFederationReport — header', () => {
     );
     expect(output).toContain('5 MFs');
   });
+
+  it('renders horizontal rule after header', () => {
+    const output = formatFederationReport(makeReport());
+    expect(output).toContain('─'.repeat(60));
+  });
 });
 
 // ─── Empty report ─────────────────────────────────────────────────────────────
@@ -46,27 +51,37 @@ describe('formatFederationReport — empty report', () => {
     expect(output).toContain('No federation-level issues found');
   });
 
-  it('does not render any section headers when no findings', () => {
+  it('does not render any issue cards when no findings', () => {
     const output = formatFederationReport(makeReport());
-    expect(output).not.toContain('Version conflicts');
-    expect(output).not.toContain('Singleton mismatches');
-    expect(output).not.toContain('Host gaps');
-    expect(output).not.toContain('Ghost shares');
+    expect(output).not.toContain('Version Conflict');
+    expect(output).not.toContain('Singleton Mismatch');
+    expect(output).not.toContain('Host Gap');
+    expect(output).not.toContain('Ghost Share');
   });
 });
 
 // ─── Version conflicts ────────────────────────────────────────────────────────
 
 describe('formatFederationReport — version conflicts', () => {
-  it('renders version conflict section with ⚠ marker', () => {
+  it('renders version conflict card with ⚠ and package name', () => {
     const output = formatFederationReport(makeReport({
       versionConflicts: [{ package: 'react', versions: { host: '^17.0.0', remote: '^18.0.0' } }],
       summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 1, singletonMismatchesCount: 0 },
     }));
-    expect(output).toContain('Version conflicts');
-    expect(output).toContain('⚠ react');
+    expect(output).toContain('⚠  Version Conflict — react');
     expect(output).toContain('host: ^17.0.0');
     expect(output).toContain('remote: ^18.0.0');
+  });
+
+  it('version conflict card shows risk and fix', () => {
+    const output = formatFederationReport(makeReport({
+      versionConflicts: [{ package: 'react', versions: { host: '^17.0.0', remote: '^18.0.0' } }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 1, singletonMismatchesCount: 0 },
+    }));
+    expect(output).toContain('→ Risk:');
+    expect(output).toContain('💡 Fix:');
+    expect(output).toContain('singleton: true');
+    expect(output).toContain('requiredVersion:');
   });
 
   it('version conflicts appear before singleton mismatches', () => {
@@ -75,51 +90,91 @@ describe('formatFederationReport — version conflicts', () => {
       singletonMismatches: [{ package: 'mobx', singletonIn: ['host'], nonSingletonIn: ['remote'] }],
       summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 1, singletonMismatchesCount: 1 },
     }));
-    expect(output.indexOf('Version conflicts')).toBeLessThan(output.indexOf('Singleton mismatches'));
+    expect(output.indexOf('Version Conflict')).toBeLessThan(output.indexOf('Singleton Mismatch'));
+  });
+
+  it('shows known react risk for version conflict', () => {
+    const output = formatFederationReport(makeReport({
+      versionConflicts: [{ package: 'react', versions: { host: '^17.0.0', remote: '^18.0.0' } }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 1, singletonMismatchesCount: 0 },
+    }));
+    expect(output).toContain('Invalid hook call');
+  });
+
+  it('picks highest version for the fix snippet', () => {
+    const output = formatFederationReport(makeReport({
+      versionConflicts: [{ package: 'react', versions: { host: '^17.0.0', remote: '^18.0.0' } }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 1, singletonMismatchesCount: 0 },
+    }));
+    expect(output).toContain('^18.0.0');
   });
 });
 
 // ─── Singleton mismatches ─────────────────────────────────────────────────────
 
 describe('formatFederationReport — singleton mismatches', () => {
-  it('renders singleton mismatch with singletonIn and nonSingletonIn', () => {
+  it('renders singleton mismatch card with ⚠ and package name', () => {
     const output = formatFederationReport(makeReport({
       singletonMismatches: [{ package: 'mobx', singletonIn: ['host'], nonSingletonIn: ['remote'] }],
       summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 0, singletonMismatchesCount: 1 },
     }));
-    expect(output).toContain('Singleton mismatches');
-    expect(output).toContain('⚠ mobx');
-    expect(output).toContain('singleton in [host]');
-    expect(output).toContain('not singleton in [remote]');
+    expect(output).toContain('⚠  Singleton Mismatch — mobx');
+  });
+
+  it('shows singletonIn and nonSingletonIn lists', () => {
+    const output = formatFederationReport(makeReport({
+      singletonMismatches: [{ package: 'mobx', singletonIn: ['host'], nonSingletonIn: ['remote'] }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 0, singletonMismatchesCount: 1 },
+    }));
+    expect(output).toContain('singleton in: [host]');
+    expect(output).toContain('not singleton in: [remote]');
+  });
+
+  it('shows risk description and fix hint', () => {
+    const output = formatFederationReport(makeReport({
+      singletonMismatches: [{ package: 'mobx', singletonIn: ['host'], nonSingletonIn: ['remote'] }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 0, singletonMismatchesCount: 1 },
+    }));
+    expect(output).toContain('→ Risk:');
+    expect(output).toContain('💡 Fix:');
+    expect(output).toContain('singleton: true');
   });
 });
 
 // ─── Host gaps ────────────────────────────────────────────────────────────────
 
 describe('formatFederationReport — host gaps', () => {
-  it('renders host gap with → marker and MF list', () => {
+  it('renders host gap card with → and package name', () => {
     const output = formatFederationReport(makeReport({
       hostGaps: [{ package: 'axios', missingIn: ['host', 'remote'] }],
       summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 1, versionConflictsCount: 0, singletonMismatchesCount: 0 },
     }));
-    expect(output).toContain('Host gaps');
-    expect(output).toContain('→ axios');
+    expect(output).toContain('→  Host Gap — axios');
     expect(output).toContain('host');
     expect(output).toContain('remote');
+  });
+
+  it('shows risk and fix snippet for host gap', () => {
+    const output = formatFederationReport(makeReport({
+      hostGaps: [{ package: 'axios', missingIn: ['host', 'remote'] }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 1, versionConflictsCount: 0, singletonMismatchesCount: 0 },
+    }));
+    expect(output).toContain('→ Risk:');
+    expect(output).toContain('💡 Fix:');
+    expect(output).toContain('singleton: true');
   });
 });
 
 // ─── Ghost shares ─────────────────────────────────────────────────────────────
 
 describe('formatFederationReport — ghost shares', () => {
-  it('renders ghost share with ✗ marker for unused-by-all case', () => {
+  it('renders ghost share card with ✗ and package name', () => {
     const output = formatFederationReport(makeReport({
       ghostShares: [{ package: 'lodash', sharedBy: 'host', usedUnsharedBy: [] }],
       summary: { totalManifests: 2, ghostSharesCount: 1, hostGapsCount: 0, versionConflictsCount: 0, singletonMismatchesCount: 0 },
     }));
-    expect(output).toContain('Ghost shares');
-    expect(output).toContain('✗ lodash');
-    expect(output).toContain('shared only by host');
+    expect(output).toContain('✗  Ghost Share — lodash');
+    expect(output).toContain('shared only by: host');
     expect(output).toContain('unused by all other MFs');
   });
 
@@ -128,16 +183,24 @@ describe('formatFederationReport — ghost shares', () => {
       ghostShares: [{ package: 'mobx', sharedBy: 'host', usedUnsharedBy: ['remote1', 'remote2'] }],
       summary: { totalManifests: 3, ghostSharesCount: 1, hostGapsCount: 0, versionConflictsCount: 0, singletonMismatchesCount: 0 },
     }));
-    expect(output).toContain('used unshared by [remote1, remote2]');
+    expect(output).toContain('used unshared by: [remote1, remote2]');
   });
 
-  it('ghost shares appear last (after host gaps)', () => {
+  it('shows fix hint pointing to sharedBy MF', () => {
+    const output = formatFederationReport(makeReport({
+      ghostShares: [{ package: 'lodash', sharedBy: 'host', usedUnsharedBy: [] }],
+      summary: { totalManifests: 2, ghostSharesCount: 1, hostGapsCount: 0, versionConflictsCount: 0, singletonMismatchesCount: 0 },
+    }));
+    expect(output).toContain('Remove "lodash" from host\'s shared config');
+  });
+
+  it('ghost shares appear after host gaps', () => {
     const output = formatFederationReport(makeReport({
       hostGaps: [{ package: 'axios', missingIn: ['remote'] }],
       ghostShares: [{ package: 'lodash', sharedBy: 'host', usedUnsharedBy: [] }],
       summary: { totalManifests: 2, ghostSharesCount: 1, hostGapsCount: 1, versionConflictsCount: 0, singletonMismatchesCount: 0 },
     }));
-    expect(output.indexOf('Host gaps')).toBeLessThan(output.indexOf('Ghost shares'));
+    expect(output.indexOf('Host Gap')).toBeLessThan(output.indexOf('Ghost Share'));
   });
 });
 
