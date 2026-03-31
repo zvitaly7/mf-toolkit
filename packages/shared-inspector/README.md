@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-> ⚠️ **Work in progress.** This package is fully tested (219 tests) and published to npm. The API is stable but may receive minor changes before the official stable release.
+> ⚠️ **Work in progress.** This package is fully tested (230 tests) and published to npm. The API is stable but may receive minor changes before the official stable release.
 
 Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
 
@@ -78,6 +78,8 @@ const report = await inspect({
 
 ### Webpack plugin
 
+`sharedConfig` is optional — the plugin auto-extracts it from `ModuleFederationPlugin` when not provided:
+
 ```typescript
 import { MfSharedInspectorPlugin } from '@mf-toolkit/shared-inspector/webpack';
 
@@ -88,18 +90,23 @@ module.exports = {
       shared: { react: { singleton: true }, mobx: { singleton: true } },
     }),
 
+    // sharedConfig not needed — auto-extracted from ModuleFederationPlugin above
     new MfSharedInspectorPlugin({
       sourceDirs: ['./src'],
-      sharedConfig: {
-        react: { singleton: true, requiredVersion: '^19.0.0' },
-        mobx: { singleton: true },
-      },
-      tsconfigPath: './tsconfig.json',   // resolve @alias/* imports
       warn: true,
-      writeManifest: true,              // writes project-manifest.json for CI
+      writeManifest: true, // writes project-manifest.json for CI aggregation
     }),
   ],
 };
+```
+
+Pass `sharedConfig` explicitly to override auto-extraction:
+
+```typescript
+new MfSharedInspectorPlugin({
+  sourceDirs: ['./src'],
+  sharedConfig: { react: { singleton: true, requiredVersion: '^18.0.0' } },
+})
 ```
 
 ## Analysis depth
