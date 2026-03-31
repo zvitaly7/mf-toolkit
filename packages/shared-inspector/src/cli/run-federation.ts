@@ -14,10 +14,23 @@ export async function runFederation(
     return 1;
   }
 
-  const manifests = args.manifestFiles.map((file) => {
-    const content = readFileSync(resolve(process.cwd(), file), 'utf-8');
-    return JSON.parse(content);
-  });
+  const manifests = [];
+  for (const file of args.manifestFiles) {
+    const filePath = resolve(process.cwd(), file);
+    let content: string;
+    try {
+      content = readFileSync(filePath, 'utf-8');
+    } catch {
+      write(`Error: cannot read file "${file}"\n`);
+      return 1;
+    }
+    try {
+      manifests.push(JSON.parse(content));
+    } catch {
+      write(`Error: "${file}" is not valid JSON\n`);
+      return 1;
+    }
+  }
 
   const report = analyzeFederation(manifests);
   write(formatFederationReport(report));

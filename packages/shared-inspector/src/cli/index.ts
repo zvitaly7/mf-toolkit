@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { parseArgs } from './args.js';
 import { HELP } from './help.js';
 import { runInteractive, makeReadlinePrompt } from './interactive.js';
@@ -11,15 +12,36 @@ export { runInteractive } from './interactive.js';
 export { HELP } from './help.js';
 export type { CliArgs, PromptFn } from './types.js';
 
+function getVersion(): string {
+  try {
+    const pkgUrl = new URL('../../package.json', import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgUrl, 'utf-8')) as { version: string };
+    return pkg.version;
+  } catch {
+    return 'unknown';
+  }
+}
+
 export async function main(
   argv: string[],
   write: (s: string) => void = (s) => process.stdout.write(s),
   prompt?: PromptFn,
 ): Promise<number> {
-  let args = parseArgs(argv);
+  let args;
+  try {
+    args = parseArgs(argv);
+  } catch (err) {
+    write(`Error: ${(err as Error).message}\n`);
+    return 1;
+  }
 
   if (args.command === 'help') {
     write(HELP);
+    return 0;
+  }
+
+  if (args.command === 'version') {
+    write(`@mf-toolkit/shared-inspector ${getVersion()}\n`);
     return 0;
   }
 
