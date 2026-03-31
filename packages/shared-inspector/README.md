@@ -4,7 +4,9 @@
 [![license](https://img.shields.io/npm/l/@mf-toolkit/shared-inspector?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
-Build-time analyser for Module Federation `shared` dependencies. Two-phase architecture: **collect facts → analyse facts**.
+**Prevent duplicate React, version conflicts, and bundle bloat in microfrontends.**
+
+Module Federation `shared` config breaks in silence — wrong versions ship to production, 10× React ends up in the bundle, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time and tells you exactly what to fix.
 
 ## The problem
 
@@ -50,16 +52,13 @@ $ npx @mf-toolkit/shared-inspector --interactive
 
 [MfSharedInspector] Interactive setup
 
-Source directories to scan (default: ./src): 
-Scan depth — direct or local-graph (default: local-graph): 
+Source directories to scan (default: ./src):
+Scan depth — direct or local-graph (default: local-graph):
 Shared packages — comma-separated names or path to .json (empty to skip): react,react-dom,mobx
-Path to tsconfig.json for alias resolution (empty to skip): 
-Workspace packages to exclude, comma-separated (empty to skip): 
+Path to tsconfig.json for alias resolution (empty to skip):
+Workspace packages to exclude, comma-separated (empty to skip):
 Fail build on findings — mismatch / unused / any / none (default: none): mismatch
 Write project-manifest.json? (y/N): n
-
-[MfSharedInspector] checkout (depth: local-graph, 47 files scanned)
-  ...
 ```
 
 ### CLI reference
@@ -79,43 +78,117 @@ Write project-manifest.json? (y/N): n
 | `--version, -v` | — | Print version and exit |
 | `--help, -h` | — | Show help |
 
+## Terminal output
+
+Each finding is rendered as a diagnostic card: what's wrong, what breaks at runtime, and a ready-to-paste fix.
+
+```
+  mf-inspector  v0.4.0
+
+✓  Scanned 47 files
+
+[MfSharedInspector] checkout (depth: local-graph, 47 files scanned)
+────────────────────────────────────────────────────────────
+
+⚠  Version Mismatch — react
+   configured: ^18.0.0 | installed: 17.0.2
+   → Risk: Invalid hook call, broken context across MFs
+   💡 Fix:
+   shared: {
+     react: { singleton: true, requiredVersion: "^18.0.0" }
+   }
+
+✗  Unused Shared — lodash
+   0 imports, shared without singleton
+   → Wastes bundle negotiation overhead with no benefit
+   💡 Fix: Remove "lodash" from shared config
+
+→  Not Shared — mobx (12 imports in 8 files via re-export in src/shared/index.ts)
+   → Risk: Each MF gets its own MobX — observables and reactions won't sync between MFs
+   💡 Fix:
+   shared: {
+     mobx: { singleton: true }
+   }
+
+────────────────────────────────────────────────────────────
+Score: 62/100  🟠 RISKY
+
+Issues:
+  🔴  1 high    — version mismatch
+  🟠  1 medium  — singleton gaps, duplicate libs
+  🟡  1 low     — over-sharing
+
+Total: 12 shared, 10 used, 1 unused, 1 candidates, 1 mismatch, 0 eager risks
+```
+
+Colors are auto-applied in TTY terminals and disabled in CI / piped output (`NO_COLOR` / `TERM=dumb` respected).
+
+## Risk scoring
+
+Every report ends with a score out of 100:
+
+| Severity | Penalty | Covers |
+|----------|---------|--------|
+| 🔴 HIGH | −20 each | Version mismatches, cross-MF version conflicts |
+| 🟠 MEDIUM | −8 each | Singleton risks, eager risks, duplicate libs, host gaps |
+| 🟡 LOW | −3 each | Unused shared packages, ghost shares |
+
+| Score | Label |
+|-------|-------|
+| 90–100 | ✅ HEALTHY |
+| 70–89 | 🟡 GOOD |
+| 40–69 | 🟠 RISKY |
+| 0–39 | 🔴 CRITICAL |
+
+Use `scoreProjectReport` / `scoreFederationReport` programmatically to integrate with dashboards or custom CI gates:
+
+```typescript
+import { analyzeProject, scoreProjectReport } from '@mf-toolkit/shared-inspector';
+
+const report = analyzeProject(manifest);
+const { score, label, high, medium, low } = scoreProjectReport(report);
+
+if (score < 70) {
+  console.error(`Shared config score: ${score}/100 (${label})`);
+  process.exit(1);
+}
+```
+
 ## Quick start
 
 ### Programmatic API (two-phase)
 
 ```typescript
-import { buildProjectManifest, analyzeProject } from '@mf-toolkit/shared-inspector';
+import { buildProjectManifest, analyzeProject, formatReport } from '@mf-toolkit/shared-inspector';
 
 // Phase 1: collect facts
 const manifest = await buildProjectManifest({
   name: 'checkout',
   sourceDirs: ['./src'],
   sharedConfig: {
-    react: { singleton: true, requiredVersion: '^19.0.0' },
-    'react-dom': { singleton: true, requiredVersion: '^19.0.0' },
+    react: { singleton: true, requiredVersion: '^18.0.0' },
+    'react-dom': { singleton: true, requiredVersion: '^18.0.0' },
     lodash: {},
   },
-  // depth: 'local-graph'       ← default, follows barrel re-exports
-  // tsconfigPath: './tsconfig.json'  ← optional, resolves @alias/* imports
+  // depth: 'local-graph'            ← default, follows barrel re-exports
+  // tsconfigPath: './tsconfig.json' ← optional, resolves @alias/* imports
   // workspacePackages: ['@my-org/*'] ← optional, excludes local monorepo packages
 });
 
 // Phase 2: analyse facts
-const report = analyzeProject(manifest, {
-  alwaysShared: ['react', 'react-dom'],
-});
+const report = analyzeProject(manifest);
 
-console.log(report.unused);
-// [{ package: 'lodash', singleton: false }]
+console.log(report.mismatched);
+// [{ package: 'react', configured: '^18.0.0', installed: '17.0.2' }]
 
 console.log(report.candidates);
 // [{ package: 'mobx', importCount: 12, via: 'reexport', files: ['src/shared/index.ts'] }]
 
-console.log(report.mismatched);
-// [{ package: 'react', configured: '^19.0.0', installed: '18.3.1' }]
+console.log(report.unused);
+// [{ package: 'lodash', singleton: false }]
 
-console.log(report.eagerRisks);
-// [{ package: 'react-dom' }]  ← eager: true without singleton: true
+// Human-readable output with risk descriptions and fix snippets
+console.log(formatReport(report, { name: manifest.project.name }));
 ```
 
 ### Shortcut API
@@ -154,15 +227,6 @@ module.exports = {
 };
 ```
 
-Pass `sharedConfig` explicitly to override auto-extraction:
-
-```typescript
-new MfSharedInspectorPlugin({
-  sourceDirs: ['./src'],
-  sharedConfig: { react: { singleton: true, requiredVersion: '^18.0.0' } },
-})
-```
-
 ## Analysis depth
 
 | Depth | What it finds | Speed |
@@ -176,113 +240,56 @@ The difference matters when your project uses barrel files:
 // src/shared/index.ts
 export { observer } from 'mobx-react';    // re-export
 export { makeAutoObservable } from 'mobx'; // re-export
-```
 
-```ts
 // src/app.tsx
 import { observer } from './shared';  // relative import — direct mode stops here
 ```
 
-- **`depth: 'direct'`** scans `app.tsx`, sees `./shared` (relative) → skips. `mobx` not found.
-- **`depth: 'local-graph'`** follows `./shared` → `shared/index.ts` → finds `mobx` and `mobx-react` via re-export.
+- **`depth: 'direct'`** sees `./shared` (relative) → skips. `mobx` not found.
+- **`depth: 'local-graph'`** follows `./shared` → finds `mobx` and `mobx-react` via re-export.
 
 ## TypeScript path aliases
 
-When your project uses `paths` in `tsconfig.json`, pass `tsconfigPath` so the traverser follows aliased imports into local files instead of treating them as external packages:
-
 ```typescript
 // tsconfig.json
-{ "compilerOptions": { "baseUrl": ".", "paths": { "@components/*": ["src/components/*"] } } }
+{ "compilerOptions": { "paths": { "@components/*": ["src/components/*"] } } }
 
-// src/app.tsx
-import { Button } from '@components/Button'; // ← followed as local file, not external package
-```
-
-```typescript
 await buildProjectManifest({
   sourceDirs: ['./src'],
   tsconfigPath: './tsconfig.json', // enables alias resolution
 });
 ```
 
-Without `tsconfigPath`, `@components/Button` is treated as an external package name and packages imported inside it are invisible in local-graph mode.
-
-## Workspace packages
-
-In a monorepo where local packages import each other, use `workspacePackages` to prevent internal packages from appearing in `resolvedPackages`:
-
-```typescript
-await buildProjectManifest({
-  sourceDirs: ['./src'],
-  workspacePackages: ['@my-org/design-system', '@my-org/*'],
-});
-```
-
-## Terminal output
-
-```
-[MfSharedInspector] checkout (depth: local-graph, 47 files scanned)
-
-  Version mismatch (sharing silently broken):
-    ⚠ react — requires ^19.0.0, installed 18.3.1
-
-  Unused shared (safe to remove):
-    ✗ lodash — 0 imports, shared without singleton
-    ✗ @tanstack/react-query — 0 imports, shared as singleton
-
-  Candidates (consider adding to shared):
-    → mobx (12 imports in 8 files, via re-export in src/shared/index.ts)
-    → react-router-dom (6 imports in 4 files)
-
-  Singleton risks (add singleton: true):
-    ⚠ react-router-dom — manages global state, singleton: true recommended
-
-  Eager risks (add singleton: true or remove eager: true):
-    ⚠ react-dom — eager: true without singleton: true, risk of duplicate instances
-
-  Total: 12 shared, 10 used, 2 unused, 2 candidates, 1 mismatch, 1 eager risks
-```
+Without `tsconfigPath`, `@components/Button` is treated as an external package and packages imported inside it are invisible in `local-graph` mode.
 
 ## CI pipeline: project → federation
 
-Each microfrontend generates a manifest as a build artifact:
+Each microfrontend generates a manifest as a build artifact, then they're aggregated for cross-team analysis:
 
 ```yaml
+# .github/workflows/build.yml
 jobs:
   build-checkout:
     steps:
       - run: npm run build   # MfSharedInspectorPlugin writes project-manifest.json
       - uses: actions/upload-artifact@v4
-        with:
-          name: manifest-checkout
-          path: project-manifest.json
+        with: { name: manifest-checkout, path: project-manifest.json }
 ```
-
-Each MF manifest can then be aggregated for cross-team analysis:
 
 ```typescript
-import { analyzeFederation, formatFederationReport } from '@mf-toolkit/shared-inspector';
+import { analyzeFederation, formatFederationReport, scoreFederationReport } from '@mf-toolkit/shared-inspector';
 
 const report = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
+const { score, label } = scoreFederationReport(report);
+
 console.log(formatFederationReport(report));
-```
-
-```
-[MfSharedInspector] federation analysis (3 MFs)
-
-  Version conflicts (singleton negotiation will fail):
-    ⚠ react — checkout: ^17.0.0, catalog: ^18.0.0
-
-  Singleton mismatches (add singleton: true to all MFs):
-    ⚠ mobx — singleton in [checkout], not singleton in [catalog, cart]
-
-  Host gaps (add to shared — each MF bundles its own copy):
-    → axios — used by [checkout, catalog], not in shared
-
-  Ghost shares (remove from shared — no other MF benefits):
-    ✗ lodash — shared only by cart, unused by all other MFs
-
-  Total: 3 MFs, 1 version conflicts, 1 singleton mismatches, 1 host gaps, 1 ghost shares
+// ⚠  Version Conflict — react
+//    checkout: ^17.0.0
+//    catalog: ^18.0.0
+//    → Risk: MF singleton negotiation will silently load wrong version → Invalid hook call
+//    💡 Fix: shared: { react: { singleton: true, requiredVersion: "^18.0.0" } }
+//
+// Score: 60/100  🟠 RISKY
 ```
 
 Or use the CLI directly:
@@ -316,6 +323,20 @@ npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
 | `additionalCandidates` | `string[]` | `[]` | Extend built-in candidates list |
 | `additionalSingletonRisks` | `string[]` | `[]` | Extend built-in singleton-risk list |
 
+### `scoreProjectReport(report)` / `scoreFederationReport(report)`
+
+Returns a `RiskScore`:
+
+```typescript
+interface RiskScore {
+  score: number;                           // 0–100, higher is better
+  label: 'HEALTHY' | 'GOOD' | 'RISKY' | 'CRITICAL';
+  high: number;                            // count of high-severity findings
+  medium: number;                          // count of medium-severity findings
+  low: number;                             // count of low-severity findings
+}
+```
+
 ### `analyzeFederation(manifests, options?)`
 
 Accepts N `ProjectManifest` objects (one per microfrontend) and returns a `FederationReport`.
@@ -324,20 +345,12 @@ Accepts N `ProjectManifest` objects (one per microfrontend) and returns a `Feder
 |--------|------|---------|-------------|
 | `alwaysShared` | `string[]` | `['react','react-dom']` | Exclude from ghost/gap detection |
 
-### `formatFederationReport(report)`
-
-Formats a `FederationReport` as a human-readable terminal string.
-
 ### `MfSharedInspectorPlugin` options
 
 Extends all `buildProjectManifest` options (except `name`, auto-resolved from compiler) plus:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `sourceDirs` | `string[]` | — | Directories to scan |
-| `sharedConfig` | `Record<string, SharedDepConfig>` | auto-extracted | Override auto-extraction from `ModuleFederationPlugin` |
-| `tsconfigPath` | `string` | `undefined` | tsconfig.json for path alias resolution |
-| `workspacePackages` | `string[]` | `[]` | Local monorepo packages to exclude |
 | `warn` | `boolean` | `true` | Print findings to console |
 | `failOn` | `'mismatch' \| 'unused' \| 'any'` | `undefined` | Fail the build when findings match |
 | `writeManifest` | `boolean` | `false` | Write `project-manifest.json` to `outputDir` |
@@ -348,37 +361,29 @@ Extends all `buildProjectManifest` options (except `name`, auto-resolved from co
 
 ### Per-project (`analyzeProject`)
 
-| Category | Type | Description |
-|----------|------|-------------|
-| `mismatched` | Deterministic | `requiredVersion` doesn't satisfy installed version |
-| `unused` | Deterministic* | In `shared` config but not observed in scanned sources |
-| `candidates` | Heuristic | Observed packages not in `shared` that are typically shared |
-| `singletonRisks` | Heuristic | Global-state packages shared without `singleton: true` |
-| `eagerRisks` | Heuristic | `eager: true` without `singleton: true` — risk of duplicate instances |
-
-*Within the visibility of the chosen depth.*
+| Category | Severity | Description |
+|----------|----------|-------------|
+| `mismatched` | 🔴 HIGH | `requiredVersion` doesn't satisfy installed version |
+| `singletonRisks` | 🟠 MEDIUM | Global-state packages shared without `singleton: true` |
+| `eagerRisks` | 🟠 MEDIUM | `eager: true` without `singleton: true` |
+| `candidates` | 🟠 MEDIUM | Used packages missing from `shared` (each MF bundles own copy) |
+| `unused` | 🟡 LOW | In `shared` config but not observed in scanned sources |
 
 ### Cross-MF (`analyzeFederation`)
 
-| Category | Type | Description |
-|----------|------|-------------|
-| `versionConflicts` | Deterministic | `requiredVersion` ranges across MFs have no overlap |
-| `singletonMismatches` | Deterministic | `singleton: true` in some MFs, absent in others |
-| `hostGaps` | Heuristic | Package used by 2+ MFs but not declared in `shared` by anyone |
-| `ghostShares` | Heuristic | Package in `shared` of one MF, unused/unshared by all others |
+| Category | Severity | Description |
+|----------|----------|-------------|
+| `versionConflicts` | 🔴 HIGH | `requiredVersion` ranges across MFs have no overlap |
+| `singletonMismatches` | 🟠 MEDIUM | `singleton: true` in some MFs, absent in others |
+| `hostGaps` | 🟠 MEDIUM | Package used by 2+ MFs but not declared in `shared` by anyone |
+| `ghostShares` | 🟡 LOW | Package in `shared` of one MF, unused/unshared by all others |
 
 ## Known limitations
 
-- **TypeScript path aliases without `tsconfigPath`**: aliased imports are treated as external package names. Pass `tsconfigPath` to resolve them correctly.
+- **TypeScript path aliases without `tsconfigPath`**: aliased imports are treated as external package names.
 - **Dynamic imports with variables** (`import(moduleName)`): not analysed — requires runtime information.
-- **Exact tsconfig alias patterns** (non-wildcard, e.g. `"@root": ["."]`): not supported, only `"@alias/*"` wildcard form.
-- **Subclassed `ModuleFederationPlugin`**: auto-extraction matches by constructor name. A custom subclass (`class MyMFP extends ModuleFederationPlugin`) won't be detected — pass `sharedConfig` explicitly in that case.
-
-## Demo
-
-```bash
-npx tsx packages/shared-inspector/demo/run.ts
-```
+- **Exact tsconfig alias patterns** (non-wildcard): only `"@alias/*"` wildcard form is supported.
+- **Subclassed `ModuleFederationPlugin`**: auto-extraction matches by constructor name — pass `sharedConfig` explicitly for custom subclasses.
 
 ## License
 

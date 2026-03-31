@@ -3,7 +3,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-Modular **build-time optimization tools** for microfrontend architectures. Tree-shake what bundlers can't — SVG sprites, shared assets, runtime overhead. Each package works independently.
+Build-time optimization tools for microfrontend architectures. Each package works independently and is published separately to npm.
 
 ---
 
@@ -52,21 +52,14 @@ new MfSpriteWebpackPlugin({
 
 ---
 
-### 🔬 MF Shared Dependency Analyser — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
+### 🔬 MF Shared Inspector — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
-**Your `shared` config is wrong — and you don't know it yet.**
+**Prevent duplicate React, version conflicts, and bundle bloat in microfrontends.**
 
-Module Federation teams manually manage `shared` dependencies and silently ship 10× React, broken singleton chains, and ghost packages that couple independent teams for no reason.
-
-`shared-inspector` is a build-time analyser that catches these mistakes before they reach production — both per-project and across the entire federation:
-
-- 🗑️ **Over-sharing** — packages declared in `shared` that no file actually imports
-- 📦 **Under-sharing** — packages used by host and remote but missing from `shared` (each MF bundles its own copy)
-- ⚠️ **Version mismatch** — `requiredVersion` doesn't satisfy installed version → silent fallback to local bundle → "Invalid hook call" in prod
-- 🔗 **Cross-MF conflicts** — version ranges with no overlap, inconsistent singleton flags, ghost shares, host gaps
+Module Federation `shared` config breaks in silence — wrong versions ship to production, 10× React ends up in the bundle, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time and tells you exactly what to fix.
 
 ```bash
 npm install @mf-toolkit/shared-inspector --save-dev
@@ -82,43 +75,59 @@ npx @mf-toolkit/shared-inspector --interactive
 # Fail CI on version mismatches
 npx @mf-toolkit/shared-inspector --shared react,react-dom --fail-on mismatch
 
-# Cross-MF analysis from saved manifests
+# Cross-MF federation analysis from saved manifests
 npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
 ```
 
-```ts
-// Webpack plugin — sharedConfig auto-extracted from ModuleFederationPlugin, no duplication
-new MfSharedInspectorPlugin({
-  sourceDirs: ['./src'],
-  warn: true,
-  writeManifest: true, // writes project-manifest.json per MF
-});
+Each finding comes with a risk description and a ready-to-paste fix:
 
-// Programmatic API — per-project analysis
-import { buildProjectManifest, analyzeProject, analyzeFederation } from '@mf-toolkit/shared-inspector';
+```
+⚠  Version Mismatch — react
+   configured: ^18.0.0 | installed: 17.0.2
+   → Risk: Invalid hook call, broken context across MFs
+   💡 Fix:
+   shared: {
+     react: { singleton: true, requiredVersion: "^18.0.0" }
+   }
 
-const manifest = await buildProjectManifest({
-  name: 'checkout',
-  sourceDirs: ['./src'],
-  sharedConfig: { react: { singleton: true, requiredVersion: '^18.0.0' }, lodash: {} },
-});
-const report = analyzeProject(manifest);
-// report.unused     → [{ package: 'lodash', singleton: false }]
-// report.mismatched → [{ package: 'react', configured: '^18.0.0', installed: '18.3.1' }]
+→  Not Shared — mobx (12 imports in 8 files)
+   → Risk: Each MF gets its own MobX — observables won't sync between MFs
+   💡 Fix:
+   shared: {
+     mobx: { singleton: true }
+   }
 
-// Cross-MF federation analysis
-const fedReport = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
-// fedReport.versionConflicts → [{ package: 'react', versions: { checkout: '^17', catalog: '^18' } }]
-// fedReport.ghostShares      → [{ package: 'lodash', sharedBy: 'cart', usedUnsharedBy: [] }]
+────────────────────────────────────────────────────────────
+Score: 62/100  🟠 RISKY
+
+Issues:
+  🔴  1 high    — version mismatch
+  🟠  1 medium  — duplicate libs
+  🟡  1 low     — over-sharing
 ```
 
 **What it does:**
 
-- ⚡ **CLI** — `npx @mf-toolkit/shared-inspector` with interactive wizard, zero config required
-- 🔍 Two scan depths — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
-- 🧠 Detects packages hidden behind `export { X } from 'pkg'` chains that direct-mode tools miss
-- 🔌 Webpack plugin — auto-extracts `shared` from `ModuleFederationPlugin`, optionally fails the build (`failOn: 'mismatch'`)
-- 📊 Build manifest for CI — each MF writes `project-manifest.json`, then `analyzeFederation()` aggregates N manifests for cross-team analysis
+- ⚡ **CLI** — `npx @mf-toolkit/shared-inspector` with interactive wizard, spinner, colored output
+- 🩺 **Diagnostic cards** — every finding shows risk description + ready-to-paste `shared:` fix snippet
+- 📊 **Risk scoring** — `Score: 62/100 🟠 RISKY` with HIGH / MEDIUM / LOW breakdown
+- 🔍 **Two scan depths** — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
+- 🔗 **Cross-MF analysis** — version conflicts, singleton mismatches, host gaps, ghost shares across the entire federation
+- 🔌 **Webpack plugin** — auto-extracts `shared` from `ModuleFederationPlugin`, optionally fails the build
+- 📋 **Build manifests** — each MF writes `project-manifest.json` for CI aggregation
+
+```ts
+// Programmatic API — per-project analysis
+import { buildProjectManifest, analyzeProject, scoreProjectReport } from '@mf-toolkit/shared-inspector';
+
+const manifest = await buildProjectManifest({ name: 'checkout', sourceDirs: ['./src'], sharedConfig: { react: { singleton: true } } });
+const report   = analyzeProject(manifest);
+const { score, label, high } = scoreProjectReport(report);
+// score: 80, label: 'GOOD', high: 0
+
+// Webpack plugin — sharedConfig auto-extracted from ModuleFederationPlugin, no duplication
+new MfSharedInspectorPlugin({ sourceDirs: ['./src'], warn: true, writeManifest: true });
+```
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
 
@@ -129,10 +138,6 @@ const fedReport = analyzeFederation([checkoutManifest, catalogManifest, cartMani
 - ⚡ **Build-time over runtime.** Optimize at build, ship less to the browser.
 - 📦 **Use what you need.** Every package is published independently to npm. No forced coupling.
 - 🪶 **Minimal dependencies.** Zero deps by default. No glob libraries — just the Node.js standard library.
-
-## Keywords
-
-`microfrontend` `svg sprite` `webpack plugin` `icon optimization` `tree shaking icons` `bundle size` `svg optimization` `build tools` `static analysis` `micro frontend`
 
 ## License
 
