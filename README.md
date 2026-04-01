@@ -57,11 +57,9 @@ new MfSpriteWebpackPlugin({
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
-**Your `shared` config might be wrong. Find out before it ships.**
+**Validate Module Federation `shared` config before it reaches runtime.**
 
-A build-time analyzer for Module Federation `shared` config. Detects version mismatches, singleton gaps, over-sharing, and under-sharing — before they reach production. Works entirely at build time with zero runtime impact.
-
-Also supports federation-level analysis by aggregating manifests from multiple microfrontends to detect cross-app dependency conflicts.
+A build-time analyzer that detects version mismatches, singleton gaps, over-sharing, and under-sharing in your MF `shared` config. Supports federation-level analysis across multiple microfrontends via manifest aggregation.
 
 ```bash
 npm install @mf-toolkit/shared-inspector --save-dev

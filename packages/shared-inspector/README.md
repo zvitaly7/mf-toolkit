@@ -4,9 +4,9 @@
 [![license](https://img.shields.io/npm/l/@mf-toolkit/shared-inspector?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
-**Stop debugging Module Federation in production.**
+**Validate Module Federation `shared` config at build time.**
 
-`shared` config breaks in silence — wrong versions ship, duplicate React copies can end up in the bundle, singleton negotiation fails, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time. Every finding comes with a risk score and a ready-to-paste fix.
+`shared` config errors are silent — mismatched versions, broken singleton negotiation, duplicate instances in the bundle. `shared-inspector` surfaces these issues before they reach production. Every finding includes a risk score and a ready-to-paste fix.
 
 ## The problem
 
@@ -555,6 +555,24 @@ Extends all `buildProjectManifest` options (except `name`, auto-resolved from co
 | `singletonMismatches` | 🟠 MEDIUM | `singleton: true` in some MFs, absent in others |
 | `hostGaps` | 🟠 MEDIUM | Package used by 2+ MFs but not declared in `shared` by anyone |
 | `ghostShares` | 🟡 LOW | Package in `shared` of one MF, unused/unshared by all others |
+
+## How it works
+
+Four steps, no magic:
+
+1. **Scan** — statically extracts import/require statements from source files
+2. **Normalize** — reads your declared `shared` config (explicit or auto-extracted from `ModuleFederationPlugin`)
+3. **Resolve** — reads installed versions from `node_modules` to detect `requiredVersion` drift
+4. **Cross-reference** — produces findings, a risk score, and optionally a `project-manifest.json` for federation analysis
+
+No webpack build required. Runs in seconds on the source tree directly.
+
+## When not to use this tool
+
+- You are not using Module Federation (webpack or rspack)
+- Your `shared` config is intentionally empty or minimal by design
+- You only need bundle size analysis — use [webpack-bundle-analyzer](https://github.com/webpack-contrib/webpack-bundle-analyzer) instead
+- Your MF setup uses dynamic runtime sharing with non-standard orchestration that doesn't rely on the `shared` config
 
 ## Known limitations
 
