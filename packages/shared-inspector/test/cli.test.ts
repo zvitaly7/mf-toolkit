@@ -373,6 +373,91 @@ describe('main', () => {
     expect(chunks.join('')).toContain('mf-inspector');
   });
 
+  it('federation: fetches manifest from URL and returns 0', async () => {
+    const manifest = makeManifest('remote-app');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify(manifest),
+    }));
+
+    const chunks: string[] = [];
+    const code = await main(['federation', 'https://cdn.example.com/manifest.json'], (s) => chunks.push(s));
+    expect(code).toBe(0);
+    expect(analyzeFederation).toHaveBeenCalledWith([manifest]);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: fetches multiple manifests from URLs', async () => {
+    const m1 = makeManifest('checkout');
+    const m2 = makeManifest('cart');
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify(m1) })
+      .mockResolvedValueOnce({ ok: true, text: async () => JSON.stringify(m2) }),
+    );
+
+    const code = await main([
+      'federation',
+      'https://cdn.example.com/checkout.json',
+      'https://cdn.example.com/cart.json',
+    ], () => {});
+    expect(code).toBe(0);
+    expect(analyzeFederation).toHaveBeenCalledWith([m1, m2]);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: returns 1 on HTTP error from URL', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+    }));
+
+    const chunks: string[] = [];
+    const code = await main(['federation', 'https://cdn.example.com/missing.json'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('cannot fetch');
+    expect(chunks.join('')).toContain('HTTP 404');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: returns 1 on network error from URL', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+
+    const chunks: string[] = [];
+    const code = await main(['federation', 'https://cdn.example.com/manifest.json'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('cannot fetch');
+    expect(chunks.join('')).toContain('ECONNREFUSED');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: mixes local files and URLs', async () => {
+    const m1 = makeManifest('local-app');
+    const m2 = makeManifest('remote-app');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify(m2),
+    }));
+
+    // write a real temp file for the local manifest
+    const { writeFileSync, mkdtempSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'mf-test-'));
+    const localPath = join(dir, 'local.json');
+    writeFileSync(localPath, JSON.stringify(m1));
+
+    const code = await main(['federation', localPath, 'https://cdn.example.com/remote.json'], () => {});
+    expect(code).toBe(0);
+    expect(analyzeFederation).toHaveBeenCalledWith([m1, m2]);
+
+    vi.unstubAllGlobals();
+  });
+
   it('interactive: runs wizard and passes collected args to project runner', async () => {
     const answers = [
       './app',          // source dirs
