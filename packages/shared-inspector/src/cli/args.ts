@@ -17,6 +17,7 @@ export function parseArgs(argv: string[]): CliArgs {
     writeManifest: false,
     outputDir: '.',
     manifestFiles: [],
+    json: false,
   };
 
   if (argv[0] === 'federation') {
@@ -39,6 +40,8 @@ export function parseArgs(argv: string[]): CliArgs {
           throw new Error(`Invalid --min-score value. Expected a number between 0 and 100`);
         }
         args.minScore = val;
+      } else if (arg === '--json') {
+        args.json = true;
       } else if (!arg.startsWith('-')) {
         args.manifestFiles.push(arg);
       }
@@ -114,6 +117,9 @@ export function parseArgs(argv: string[]): CliArgs {
         break;
       case '--name':
         args.name = argv[++i];
+        break;
+      case '--json':
+        args.json = true;
         break;
     }
   }

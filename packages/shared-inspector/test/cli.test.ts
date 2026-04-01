@@ -552,6 +552,51 @@ describe('main', () => {
     expect(chunks.join('')).toContain('Invalid --min-score');
   });
 
+  it('project: --json outputs valid JSON with findings and score', async () => {
+    vi.mocked(analyzeProject).mockReturnValue(
+      makeReport({ mismatched: [{ package: 'react', configured: '^18', installed: '17.0.0' }] }),
+    );
+    const chunks: string[] = [];
+    const code = await main(['--json'], (s) => chunks.push(s));
+    expect(code).toBe(0);
+    const parsed = JSON.parse(chunks.join(''));
+    expect(parsed.mismatched).toHaveLength(1);
+    expect(parsed.score).toBeDefined();
+    expect(parsed.score.score).toBeTypeOf('number');
+    expect(parsed.score.label).toBeTypeOf('string');
+  });
+
+  it('project: --json output is pure JSON with no banner or spinner text', async () => {
+    const chunks: string[] = [];
+    await main(['--json'], (s) => chunks.push(s));
+    const output = chunks.join('');
+    expect(() => JSON.parse(output)).not.toThrow();
+  });
+
+  it('project: --json respects --fail-on and still exits 1', async () => {
+    vi.mocked(analyzeProject).mockReturnValue(
+      makeReport({ mismatched: [{ package: 'react', configured: '^18', installed: '17.0.0' }] }),
+    );
+    const code = await main(['--json', '--fail-on', 'mismatch'], () => {});
+    expect(code).toBe(1);
+  });
+
+  it('federation: --json outputs valid JSON with findings and score', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: async () => JSON.stringify(makeManifest()),
+    }));
+    const chunks: string[] = [];
+    const code = await main(
+      ['federation', 'https://cdn.example.com/a.json', '--json'],
+      (s) => chunks.push(s),
+    );
+    expect(code).toBe(0);
+    const parsed = JSON.parse(chunks.join(''));
+    expect(parsed.versionConflicts).toBeDefined();
+    expect(parsed.score).toBeDefined();
+    vi.unstubAllGlobals();
+  });
+
   it('federation: mixes local files and URLs', async () => {
     const m1 = makeManifest('local-app');
     const m2 = makeManifest('remote-app');

@@ -54,7 +54,7 @@ export async function main(
     return 0;
   }
 
-  printBanner(write, version);
+  if (!args.json) printBanner(write, version);
 
   if (args.command === 'federation') {
     return runFederation(args, write);

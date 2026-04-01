@@ -5,7 +5,7 @@ import { analyzeProject } from '../analyzer/analyze-project.js';
 import { formatReport } from '../reporter/format-report.js';
 import { writeManifest } from '../reporter/write-report.js';
 import { scoreProjectReport } from '../reporter/scoring.js';
-import { createSpinner } from './spinner.js';
+import { createSpinner, createNullSpinner } from './spinner.js';
 import { colorizeReport } from './colorize-report.js';
 import type { ProjectReport } from '../types.js';
 import type { CliArgs } from './types.js';
@@ -36,7 +36,7 @@ export async function runProject(
     }
   }
 
-  const spinner = createSpinner();
+  const spinner = args.json ? createNullSpinner() : createSpinner();
   spinner.start(`Scanning ${args.sourceDirs.join(', ')}`);
 
   const manifest = await buildProjectManifest({
@@ -52,25 +52,27 @@ export async function runProject(
   spinner.succeed(`Scanned ${manifest.source.filesScanned} files`);
 
   const report = analyzeProject(manifest);
+  const score = scoreProjectReport(report);
 
-  write(colorizeReport(formatReport(report, {
-    name: manifest.project.name,
-    depth: manifest.source.depth,
-    filesScanned: manifest.source.filesScanned,
-  })));
+  if (args.json) {
+    write(JSON.stringify({ ...report, score }, null, 2) + '\n');
+  } else {
+    write(colorizeReport(formatReport(report, {
+      name: manifest.project.name,
+      depth: manifest.source.depth,
+      filesScanned: manifest.source.filesScanned,
+    })));
+  }
 
   if (args.writeManifest) {
     const outPath = resolve(args.outputDir, 'project-manifest.json');
     await writeManifest(manifest, outPath);
-    write(`\n  Manifest written to ${outPath}\n`);
+    if (!args.json) write(`\n  Manifest written to ${outPath}\n`);
   }
 
   if (args.failOn && shouldFail(report, args.failOn)) return 1;
 
-  if (args.minScore !== undefined) {
-    const { score } = scoreProjectReport(report);
-    if (score < args.minScore) return 1;
-  }
+  if (args.minScore !== undefined && score.score < args.minScore) return 1;
 
   return 0;
 }

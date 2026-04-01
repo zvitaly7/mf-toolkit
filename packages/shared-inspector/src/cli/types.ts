@@ -12,6 +12,7 @@ export interface CliArgs {
   failOn?: 'mismatch' | 'unused' | 'any';
   minScore?: number;
   kind?: 'host' | 'remote' | 'unknown';
+  json?: boolean;
   writeManifest: boolean;
   outputDir: string;
   name?: string;
