@@ -503,6 +503,17 @@ Accepts N `ProjectManifest` objects (one per microfrontend) and returns a `Feder
 |--------|------|---------|-------------|
 | `alwaysShared` | `string[]` | `['react','react-dom']` | Exclude from ghost/gap detection |
 
+### `writeReport(report, outputPath)` / `writeManifest(manifest, outputPath)`
+
+Write a `ProjectReport` or `ProjectManifest` to a JSON file. Parent directories are created automatically.
+
+```typescript
+import { writeReport, writeManifest } from '@mf-toolkit/shared-inspector';
+
+await writeReport(report, './dist/shared-report.json');
+await writeManifest(manifest, './dist/project-manifest.json');
+```
+
 ### `MfSharedInspectorPlugin` options
 
 Extends all `buildProjectManifest` options (except `name`, auto-resolved from compiler) plus:
