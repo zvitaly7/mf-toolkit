@@ -57,9 +57,9 @@ new MfSpriteWebpackPlugin({
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
-**Your `shared` config is probably wrong. Find out before it ships.**
+**Your `shared` config might be wrong. Find out before it ships.**
 
-A build-time analyzer for Module Federation `shared` config. Detects version mismatches, singleton gaps, over-sharing, and under-sharing — with zero runtime impact. Also supports federation-level analysis by aggregating manifests from multiple microfrontends, enabling detection of cross-app dependency conflicts. Provides machine-readable JSON output for CI/CD pipelines and can be configured to fail builds on critical issues.
+A build-time analyzer for Module Federation `shared` config. Detects version mismatches, singleton gaps, over-sharing, and under-sharing — with zero runtime impact. Supports federation-level analysis by aggregating manifests from multiple microfrontends to detect cross-app dependency conflicts. Provides machine-readable JSON output for CI/CD pipelines and can be configured to fail builds on critical issues.
 
 ```bash
 npm install @mf-toolkit/shared-inspector --save-dev
@@ -68,9 +68,9 @@ npm install @mf-toolkit/shared-inspector --save-dev
 **What it does:**
 
 - 🔍 **Detects** version mismatches, singleton gaps, over-sharing, and under-sharing
-- 🔗 **Federation analysis** — aggregates manifests across microfrontends, catches cross-app conflicts
-- 📊 **Risk scoring** — every finding ranked by severity with a ready-to-paste fix
-- 🔌 **Webpack plugin** — auto-extracts `shared` config, optionally fails the build
+- 🔗 **Federation analysis** — aggregates manifests across microfrontends and detects cross-app conflicts
+- 📊 **Risk scoring** — every finding ranked by severity with actionable fix suggestions
+- 🔌 **Webpack plugin** — extracts `shared` config at build time and can fail builds on critical issues
 - 📋 **JSON output** — machine-readable report for CI/CD integration
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
