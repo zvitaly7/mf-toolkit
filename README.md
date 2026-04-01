@@ -57,77 +57,21 @@ new MfSpriteWebpackPlugin({
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
-**Stop debugging Module Federation in production.**
+**Your `shared` config is probably wrong. Find out before it ships.**
 
-`shared` config breaks in silence — wrong versions ship, 10× React ends up in the bundle, singleton chains collapse, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time. Every finding comes with a risk score and a ready-to-paste fix.
+A build-time analyzer for Module Federation `shared` config. Detects version mismatches, singleton gaps, over-sharing, and under-sharing — with zero runtime impact. Also supports federation-level analysis by aggregating manifests from multiple microfrontends, enabling detection of cross-app dependency conflicts. Provides machine-readable JSON output for CI/CD pipelines and can be configured to fail builds on critical issues.
 
 ```bash
 npm install @mf-toolkit/shared-inspector --save-dev
 ```
 
-```bash
-# Zero-config CLI — auto-reads project name and scans ./src
-npx @mf-toolkit/shared-inspector
-
-# Interactive wizard — step-by-step setup, no flags needed
-npx @mf-toolkit/shared-inspector --interactive
-
-# Fail CI on version mismatches
-npx @mf-toolkit/shared-inspector --shared react,react-dom --fail-on mismatch
-
-# Cross-MF federation analysis from saved manifests
-npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
-```
-
-Each finding comes with a risk description and a ready-to-paste fix:
-
-```
-⚠  Version Mismatch — react
-   configured: ^18.0.0 | installed: 17.0.2
-   → Risk: Invalid hook call, broken context across MFs
-   💡 Fix:
-   shared: {
-     react: { singleton: true, requiredVersion: "^18.0.0" }
-   }
-
-→  Not Shared — mobx (12 imports in 8 files)
-   → Risk: Each MF gets its own MobX — observables won't sync between MFs
-   💡 Fix:
-   shared: {
-     mobx: { singleton: true }
-   }
-
-────────────────────────────────────────────────────────────
-Score: 62/100  🟠 RISKY
-
-Issues:
-  🔴  1 high    — version mismatch
-  🟠  1 medium  — duplicate libs
-  🟡  1 low     — over-sharing
-```
-
 **What it does:**
 
-- ⚡ **CLI** — `npx @mf-toolkit/shared-inspector` with interactive wizard, spinner, colored output
-- 🩺 **Diagnostic cards** — every finding shows risk description + ready-to-paste `shared:` fix snippet
-- 📊 **Risk scoring** — `Score: 62/100 🟠 RISKY` with HIGH / MEDIUM / LOW breakdown
-- 🔍 **Two scan depths** — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
-- 🔗 **Cross-MF analysis** — version conflicts, singleton mismatches, host gaps, ghost shares across the entire federation
-- 🔌 **Webpack plugin** — auto-extracts `shared` from `ModuleFederationPlugin`, optionally fails the build
-- 📋 **Build manifests** — each MF writes `project-manifest.json` for CI aggregation
-
-```ts
-// Programmatic API — per-project analysis
-import { buildProjectManifest, analyzeProject, scoreProjectReport } from '@mf-toolkit/shared-inspector';
-
-const manifest = await buildProjectManifest({ name: 'checkout', sourceDirs: ['./src'], sharedConfig: { react: { singleton: true } } });
-const report   = analyzeProject(manifest);
-const { score, label, high } = scoreProjectReport(report);
-// score: 80, label: 'GOOD', high: 0
-
-// Webpack plugin — sharedConfig auto-extracted from ModuleFederationPlugin, no duplication
-new MfSharedInspectorPlugin({ sourceDirs: ['./src'], warn: true, writeManifest: true });
-```
+- 🔍 **Detects** version mismatches, singleton gaps, over-sharing, and under-sharing
+- 🔗 **Federation analysis** — aggregates manifests across microfrontends, catches cross-app conflicts
+- 📊 **Risk scoring** — every finding ranked by severity with a ready-to-paste fix
+- 🔌 **Webpack plugin** — auto-extracts `shared` config, optionally fails the build
+- 📋 **JSON output** — machine-readable report for CI/CD integration
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
 
