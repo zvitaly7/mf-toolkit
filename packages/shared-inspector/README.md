@@ -441,7 +441,10 @@ Write project-manifest.json? (y/N): n
 | `--tsconfig <path>` | — | tsconfig.json for path alias resolution |
 | `--workspace-packages <pkgs>` | — | Comma-separated workspace packages to exclude |
 | `--name <name>` | auto from `package.json` | Project name |
+| `--kind <kind>` | `unknown` | Project role: `host` \| `remote` \| `unknown` |
 | `--fail-on <rule>` | — | Exit 1 when findings match: `mismatch` \| `unused` \| `any` |
+| `--min-score <n>` | — | Exit 1 when score is below n (0–100) |
+| `--json` | `false` | Output findings as JSON (suppresses spinner and banner) |
 | `--write-manifest` | `false` | Write `project-manifest.json` to output dir |
 | `--output-dir <dir>` | `.` | Output directory for manifest |
 | `--interactive, -i` | — | Launch step-by-step wizard |
@@ -451,10 +454,16 @@ Write project-manifest.json? (y/N): n
 **Federation subcommand:**
 
 ```bash
-mf-inspector federation <manifest1> [manifest2...] [--help]
+mf-inspector federation <manifest1> [manifest2...] [--fail-on <rule>] [--min-score <n>] [--json]
 ```
 
 Each manifest can be a local file path or an `http(s)://` URL. Local paths are resolved relative to the current working directory.
+
+| Flag | Description |
+|------|-------------|
+| `--fail-on <rule>` | Exit 1 when findings match: `mismatch` (version conflicts) \| `unused` (ghost shares) \| `any` |
+| `--min-score <n>` | Exit 1 when federation score is below n |
+| `--json` | Output findings as JSON |
 
 ## API reference
 
