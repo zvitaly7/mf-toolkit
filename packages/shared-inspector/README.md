@@ -251,10 +251,64 @@ jobs:
 
 Once each MF has emitted its manifest, aggregate them to detect cross-team conflicts: version mismatches, singleton inconsistencies, and shared-config gaps across host and remotes.
 
+Manifests can be local files or HTTP/HTTPS URLs — making federation analysis work across separate repositories without manual file passing.
+
 ### CLI
 
 ```bash
+# Local files (monorepo or pre-downloaded)
 npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
+
+# URLs — fetch manifests directly from remote storage
+npx @mf-toolkit/shared-inspector federation \
+  https://storage.example.com/manifests/checkout.json \
+  https://storage.example.com/manifests/cart.json \
+  https://storage.example.com/manifests/catalog.json
+
+# Mix of local files and URLs
+npx @mf-toolkit/shared-inspector federation checkout.json https://storage.example.com/cart.json
+```
+
+### Polyrepo setup
+
+In a polyrepo, each team owns a separate repository. The recommended workflow:
+
+**Step 1 — each MF repo publishes its manifest on every build:**
+
+```yaml
+# .github/workflows/build.yml (in each MF repo)
+jobs:
+  build:
+    steps:
+      - run: npm run build        # MfSharedInspectorPlugin writes project-manifest.json
+      - uses: actions/upload-artifact@v4
+        with: { name: manifest-${{ github.event.repository.name }}, path: project-manifest.json }
+```
+
+**Step 2 — a dedicated federation-check job downloads all manifests and runs analysis:**
+
+```yaml
+# .github/workflows/federation-check.yml (in a shared/platform repo)
+jobs:
+  federation-check:
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: manifest-checkout, github-token: ${{ secrets.GITHUB_TOKEN }}, repository: org/checkout, run-id: ... }
+      - uses: actions/download-artifact@v4
+        with: { name: manifest-cart, github-token: ${{ secrets.GITHUB_TOKEN }}, repository: org/cart, run-id: ... }
+      - run: |
+          npx @mf-toolkit/shared-inspector federation \
+            manifest-checkout/project-manifest.json \
+            manifest-cart/project-manifest.json
+```
+
+Alternatively, upload manifests to a shared HTTP storage (S3, CDN, object store) and use URL inputs directly — no artifact coordination required:
+
+```yaml
+      - run: |
+          npx @mf-toolkit/shared-inspector federation \
+            https://manifests.internal/checkout/latest.json \
+            https://manifests.internal/cart/latest.json
 ```
 
 ### Programmatic
@@ -393,6 +447,14 @@ Write project-manifest.json? (y/N): n
 | `--interactive, -i` | — | Launch step-by-step wizard |
 | `--version, -v` | — | Print version and exit |
 | `--help, -h` | — | Show help |
+
+**Federation subcommand:**
+
+```bash
+mf-inspector federation <manifest1> [manifest2...] [--help]
+```
+
+Each manifest can be a local file path or an `http(s)://` URL. Local paths are resolved relative to the current working directory.
 
 ## API reference
 
