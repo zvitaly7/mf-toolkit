@@ -18,6 +18,22 @@ Module Federation teams manually manage `shared` config and make three kinds of 
 
 Existing tools (webpack-bundle-analyzer, source-map-explorer) show *what ended up in the bundle*, not *why shared config is suboptimal*. Different questions.
 
+## Why not bundle analyzer?
+
+Bundle analyzers (webpack-bundle-analyzer, source-map-explorer, stats.json inspection) answer a different question: *what is in the output?* They are useful for auditing final bundle size, but they don't model Module Federation's shared dependency negotiation.
+
+| Question | Bundle analyzer | shared-inspector |
+|----------|----------------|-----------------|
+| Which packages are large? | ✅ | — |
+| Is React duplicated across MFs? | Visible after the fact | ✅ Detected before build ships |
+| Is `requiredVersion` out of sync with the installed version? | ✗ | ✅ |
+| Is a package marked `singleton` in one MF but not another? | ✗ | ✅ |
+| Which packages are declared `shared` but never imported? | ✗ | ✅ |
+| Which used packages are missing from `shared` entirely? | ✗ | ✅ |
+| Cross-MF version conflicts across teams? | ✗ | ✅ via federation manifests |
+
+In short: bundle analyzers are useful for post-build inspection. `shared-inspector` is focused on the `shared` config itself — catching misconfiguration at build time and explaining what the runtime consequences would be.
+
 ## Installation
 
 ```bash
