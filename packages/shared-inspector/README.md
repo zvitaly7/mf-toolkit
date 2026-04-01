@@ -40,63 +40,15 @@ In short: bundle analyzers are useful for post-build inspection. `shared-inspect
 npm install --save-dev @mf-toolkit/shared-inspector
 ```
 
-## CLI
+## Quick start
 
-The fastest way to get started — no config file, no webpack required:
+Run against any MF project — no config file needed:
 
 ```bash
-# Analyse the current project (auto-reads name from package.json)
 npx @mf-toolkit/shared-inspector
-
-# Step-by-step interactive wizard — answers guide you through all options
-npx @mf-toolkit/shared-inspector --interactive
-
-# Pass options directly
-npx @mf-toolkit/shared-inspector --source ./src --shared react,react-dom --fail-on mismatch
-
-# Load shared config from a JSON file
-npx @mf-toolkit/shared-inspector --shared ./shared-config.json --write-manifest
-
-# Cross-MF federation analysis from saved manifests
-npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
 ```
 
-### Interactive wizard
-
-```
-$ npx @mf-toolkit/shared-inspector --interactive
-
-[MfSharedInspector] Interactive setup
-
-Source directories to scan (default: ./src):
-Scan depth — direct or local-graph (default: local-graph):
-Shared packages — comma-separated names or path to .json (empty to skip): react,react-dom,mobx
-Path to tsconfig.json for alias resolution (empty to skip):
-Workspace packages to exclude, comma-separated (empty to skip):
-Fail build on findings — mismatch / unused / any / none (default: none): mismatch
-Write project-manifest.json? (y/N): n
-```
-
-### CLI reference
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--source, -s <dirs>` | `./src` | Source dirs to scan, comma-separated |
-| `--depth <depth>` | `local-graph` | Scan depth: `direct` \| `local-graph` |
-| `--shared <packages\|file>` | — | Comma-separated package names or path to `.json` config |
-| `--tsconfig <path>` | — | tsconfig.json for path alias resolution |
-| `--workspace-packages <pkgs>` | — | Comma-separated workspace packages to exclude |
-| `--name <name>` | auto from `package.json` | Project name |
-| `--fail-on <rule>` | — | Exit 1 when findings match: `mismatch` \| `unused` \| `any` |
-| `--write-manifest` | `false` | Write `project-manifest.json` to output dir |
-| `--output-dir <dir>` | `.` | Output directory for manifest |
-| `--interactive, -i` | — | Launch step-by-step wizard |
-| `--version, -v` | — | Print version and exit |
-| `--help, -h` | — | Show help |
-
-## Terminal output
-
-Each finding is rendered as a diagnostic card: what's wrong, what breaks at runtime, and a ready-to-paste fix.
+The tool scans `./src`, reads installed versions from `package.json`, and prints a diagnostic report. Each finding includes what's wrong, what breaks at runtime, and a ready-to-paste fix:
 
 ```
   mf-inspector  v0.4.0
@@ -139,7 +91,7 @@ Total: 12 shared, 10 used, 1 unused, 1 candidates, 1 mismatch, 0 eager risks
 
 Colors are auto-applied in TTY terminals and disabled in CI / piped output (`NO_COLOR` / `TERM=dumb` respected).
 
-## Risk scoring
+### Risk scoring
 
 Every report ends with a score out of 100:
 
@@ -156,7 +108,43 @@ Every report ends with a score out of 100:
 | 40–69 | 🟠 RISKY |
 | 0–39 | 🔴 CRITICAL |
 
-Use `scoreProjectReport` / `scoreFederationReport` programmatically to integrate with dashboards or custom CI gates:
+## CI mode
+
+Integrate into build pipelines to fail on findings, gate on score, or emit manifests for later federation analysis.
+
+### Failing the build
+
+Use `--fail-on` to exit with code 1 when specific findings are detected:
+
+```bash
+npx @mf-toolkit/shared-inspector --source ./src --shared react,react-dom --fail-on mismatch
+```
+
+With the webpack plugin:
+
+```typescript
+import { MfSharedInspectorPlugin } from '@mf-toolkit/shared-inspector/webpack';
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'checkout',
+      shared: { react: { singleton: true }, mobx: { singleton: true } },
+    }),
+
+    // sharedConfig not needed — auto-extracted from ModuleFederationPlugin above
+    new MfSharedInspectorPlugin({
+      sourceDirs: ['./src'],
+      failOn: 'mismatch', // 'mismatch' | 'unused' | 'any'
+      warn: true,
+    }),
+  ],
+};
+```
+
+### Gating on score
+
+Use `scoreProjectReport` programmatically to set custom thresholds:
 
 ```typescript
 import { analyzeProject, scoreProjectReport } from '@mf-toolkit/shared-inspector';
@@ -170,9 +158,67 @@ if (score < 70) {
 }
 ```
 
-## Quick start
+### Writing manifests for federation analysis
 
-### Programmatic API (two-phase)
+Each MF can emit a `project-manifest.json` as a build artifact to enable cross-team analysis in a later step:
+
+```bash
+npx @mf-toolkit/shared-inspector --shared ./shared-config.json --write-manifest
+```
+
+With the webpack plugin:
+
+```typescript
+new MfSharedInspectorPlugin({
+  sourceDirs: ['./src'],
+  writeManifest: true, // writes project-manifest.json for CI aggregation
+  warn: true,
+})
+```
+
+Upload the manifest as a CI artifact:
+
+```yaml
+# .github/workflows/build.yml
+jobs:
+  build-checkout:
+    steps:
+      - run: npm run build   # MfSharedInspectorPlugin writes project-manifest.json
+      - uses: actions/upload-artifact@v4
+        with: { name: manifest-checkout, path: project-manifest.json }
+```
+
+## Federation mode
+
+Once each MF has emitted its manifest, aggregate them to detect cross-team conflicts: version mismatches, singleton inconsistencies, and shared-config gaps across host and remotes.
+
+### CLI
+
+```bash
+npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
+```
+
+### Programmatic
+
+```typescript
+import { analyzeFederation, formatFederationReport, scoreFederationReport } from '@mf-toolkit/shared-inspector';
+
+const report = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
+const { score, label } = scoreFederationReport(report);
+
+console.log(formatFederationReport(report));
+// ⚠  Version Conflict — react
+//    checkout: ^17.0.0
+//    catalog: ^18.0.0
+//    → Risk: MF singleton negotiation may silently load the wrong version → Invalid hook call
+//    💡 Fix: shared: { react: { singleton: true, requiredVersion: "^18.0.0" } }
+//
+// Score: 60/100  🟠 RISKY
+```
+
+## Programmatic API
+
+### Two-phase API
 
 ```typescript
 import { buildProjectManifest, analyzeProject, formatReport } from '@mf-toolkit/shared-inspector';
@@ -219,30 +265,6 @@ const report = await inspect({
 });
 ```
 
-### Webpack plugin
-
-`sharedConfig` is optional — the plugin auto-extracts it from `ModuleFederationPlugin` when not provided:
-
-```typescript
-import { MfSharedInspectorPlugin } from '@mf-toolkit/shared-inspector/webpack';
-
-module.exports = {
-  plugins: [
-    new ModuleFederationPlugin({
-      name: 'checkout',
-      shared: { react: { singleton: true }, mobx: { singleton: true } },
-    }),
-
-    // sharedConfig not needed — auto-extracted from ModuleFederationPlugin above
-    new MfSharedInspectorPlugin({
-      sourceDirs: ['./src'],
-      warn: true,
-      writeManifest: true, // writes project-manifest.json for CI aggregation
-    }),
-  ],
-};
-```
-
 ## Analysis depth
 
 | Depth | What it finds | Speed |
@@ -278,41 +300,40 @@ await buildProjectManifest({
 
 Without `tsconfigPath`, `@components/Button` is treated as an external package and packages imported inside it are invisible in `local-graph` mode.
 
-## CI pipeline: project → federation
+## Interactive wizard
 
-Each microfrontend generates a manifest as a build artifact, then they're aggregated for cross-team analysis:
+Not sure which flags to pass? Run the step-by-step wizard:
 
-```yaml
-# .github/workflows/build.yml
-jobs:
-  build-checkout:
-    steps:
-      - run: npm run build   # MfSharedInspectorPlugin writes project-manifest.json
-      - uses: actions/upload-artifact@v4
-        with: { name: manifest-checkout, path: project-manifest.json }
+```
+$ npx @mf-toolkit/shared-inspector --interactive
+
+[MfSharedInspector] Interactive setup
+
+Source directories to scan (default: ./src):
+Scan depth — direct or local-graph (default: local-graph):
+Shared packages — comma-separated names or path to .json (empty to skip): react,react-dom,mobx
+Path to tsconfig.json for alias resolution (empty to skip):
+Workspace packages to exclude, comma-separated (empty to skip):
+Fail build on findings — mismatch / unused / any / none (default: none): mismatch
+Write project-manifest.json? (y/N): n
 ```
 
-```typescript
-import { analyzeFederation, formatFederationReport, scoreFederationReport } from '@mf-toolkit/shared-inspector';
+## CLI reference
 
-const report = analyzeFederation([checkoutManifest, catalogManifest, cartManifest]);
-const { score, label } = scoreFederationReport(report);
-
-console.log(formatFederationReport(report));
-// ⚠  Version Conflict — react
-//    checkout: ^17.0.0
-//    catalog: ^18.0.0
-//    → Risk: MF singleton negotiation may silently load the wrong version → Invalid hook call
-//    💡 Fix: shared: { react: { singleton: true, requiredVersion: "^18.0.0" } }
-//
-// Score: 60/100  🟠 RISKY
-```
-
-Or use the CLI directly:
-
-```bash
-npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
-```
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--source, -s <dirs>` | `./src` | Source dirs to scan, comma-separated |
+| `--depth <depth>` | `local-graph` | Scan depth: `direct` \| `local-graph` |
+| `--shared <packages\|file>` | — | Comma-separated package names or path to `.json` config |
+| `--tsconfig <path>` | — | tsconfig.json for path alias resolution |
+| `--workspace-packages <pkgs>` | — | Comma-separated workspace packages to exclude |
+| `--name <name>` | auto from `package.json` | Project name |
+| `--fail-on <rule>` | — | Exit 1 when findings match: `mismatch` \| `unused` \| `any` |
+| `--write-manifest` | `false` | Write `project-manifest.json` to output dir |
+| `--output-dir <dir>` | `.` | Output directory for manifest |
+| `--interactive, -i` | — | Launch step-by-step wizard |
+| `--version, -v` | — | Print version and exit |
+| `--help, -h` | — | Show help |
 
 ## API reference
 
