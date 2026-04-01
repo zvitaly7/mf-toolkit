@@ -85,7 +85,7 @@ Running `npx @mf-toolkit/shared-inspector` in the `checkout` project:
 Score: 69/100  🟠 RISKY
 ```
 
-**After applying the three suggested fixes** — `react` version aligned, `zustand` added to `shared`, `lodash` removed:
+**After manually updating the config based on the suggestions above** — `react` version aligned, `zustand` added to `shared`, `lodash` removed:
 
 ```
 Score: 100/100  ✅ HEALTHY
