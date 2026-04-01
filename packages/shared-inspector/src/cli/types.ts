@@ -10,6 +10,8 @@ export interface CliArgs {
   tsconfigPath?: string;
   workspacePackages: string[];
   failOn?: 'mismatch' | 'unused' | 'any';
+  minScore?: number;
+  kind?: 'host' | 'remote' | 'unknown';
   writeManifest: boolean;
   outputDir: string;
   name?: string;

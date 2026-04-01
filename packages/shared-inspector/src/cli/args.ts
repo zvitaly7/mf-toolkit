@@ -5,6 +5,7 @@ import type { SharedDepConfig } from '../types.js';
 
 const VALID_DEPTHS = new Set(['direct', 'local-graph']);
 const VALID_FAIL_ON = new Set(['mismatch', 'unused', 'any']);
+const VALID_KINDS = new Set(['host', 'remote', 'unknown']);
 
 export function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
@@ -21,12 +22,25 @@ export function parseArgs(argv: string[]): CliArgs {
   if (argv[0] === 'federation') {
     args.command = 'federation';
     for (let i = 1; i < argv.length; i++) {
-      if (argv[i] === '--help' || argv[i] === '-h') {
+      const arg = argv[i];
+      if (arg === '--help' || arg === '-h') {
         args.command = 'help';
         break;
       }
-      if (!argv[i].startsWith('-')) {
-        args.manifestFiles.push(argv[i]);
+      if (arg === '--fail-on') {
+        const val = argv[++i] ?? '';
+        if (!VALID_FAIL_ON.has(val)) {
+          throw new Error(`Invalid --fail-on value "${val}". Expected: mismatch | unused | any`);
+        }
+        args.failOn = val as 'mismatch' | 'unused' | 'any';
+      } else if (arg === '--min-score') {
+        const val = Number(argv[++i]);
+        if (isNaN(val) || val < 0 || val > 100) {
+          throw new Error(`Invalid --min-score value. Expected a number between 0 and 100`);
+        }
+        args.minScore = val;
+      } else if (!arg.startsWith('-')) {
+        args.manifestFiles.push(arg);
       }
     }
     return args;
@@ -74,6 +88,22 @@ export function parseArgs(argv: string[]): CliArgs {
           throw new Error(`Invalid --fail-on value "${val}". Expected: mismatch | unused | any`);
         }
         args.failOn = val as 'mismatch' | 'unused' | 'any';
+        break;
+      }
+      case '--min-score': {
+        const val = Number(argv[++i]);
+        if (isNaN(val) || val < 0 || val > 100) {
+          throw new Error(`Invalid --min-score value. Expected a number between 0 and 100`);
+        }
+        args.minScore = val;
+        break;
+      }
+      case '--kind': {
+        const val = argv[++i] ?? '';
+        if (!VALID_KINDS.has(val)) {
+          throw new Error(`Invalid --kind value "${val}". Expected: host | remote | unknown`);
+        }
+        args.kind = val as 'host' | 'remote' | 'unknown';
         break;
       }
       case '--write-manifest':
