@@ -59,75 +59,21 @@ new MfSpriteWebpackPlugin({
 
 **Your `shared` config might be wrong. Find out before it ships.**
 
-A build-time analyzer for Module Federation `shared` config. Detects version mismatches, singleton gaps, over-sharing, and under-sharing — with zero runtime impact. Supports federation-level analysis by aggregating manifests from multiple microfrontends to detect cross-app dependency conflicts. Provides machine-readable JSON output for CI/CD pipelines and can be configured to fail builds on critical issues.
+A build-time analyzer for Module Federation `shared` config. Detects version mismatches, singleton gaps, over-sharing, and under-sharing — before they reach production. Works entirely at build time with zero runtime impact.
+
+Also supports federation-level analysis by aggregating manifests from multiple microfrontends to detect cross-app dependency conflicts.
 
 ```bash
 npm install @mf-toolkit/shared-inspector --save-dev
 ```
 
-```bash
-# Zero-config CLI — auto-reads project name and scans ./src
-npx @mf-toolkit/shared-inspector
-
-# Interactive wizard — step-by-step setup, no flags needed
-npx @mf-toolkit/shared-inspector --interactive
-
-# Fail CI on version mismatches
-npx @mf-toolkit/shared-inspector --shared react,react-dom --fail-on mismatch
-
-# Cross-MF federation analysis from saved manifests
-npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
-```
-
-Each finding comes with a risk description and a ready-to-paste fix:
-
-```
-⚠  Version Mismatch — react
-   configured: ^18.0.0 | installed: 17.0.2
-   → Risk: Invalid hook call, broken context across MFs
-   💡 Fix:
-   shared: {
-     react: { singleton: true, requiredVersion: "^18.0.0" }
-   }
-
-→  Not Shared — mobx (12 imports in 8 files)
-   → Risk: Each MF gets its own MobX — observables won't sync between MFs
-   💡 Fix:
-   shared: {
-     mobx: { singleton: true }
-   }
-
-────────────────────────────────────────────────────────────
-Score: 62/100  🟠 RISKY
-
-Issues:
-  🔴  1 high    — version mismatch
-  🟠  1 medium  — duplicate libs
-  🟡  1 low     — over-sharing
-```
-
 **What it does:**
 
-- ⚡ **CLI** — `npx @mf-toolkit/shared-inspector` with interactive wizard, spinner, colored output
-- 🩺 **Diagnostic cards** — every finding shows risk description + ready-to-paste `shared:` fix snippet
+- 🔍 **Detects** version mismatches, singleton gaps, over-sharing, and under-sharing
+- 🔗 **Federation analysis** — aggregates manifests across microfrontends, catches cross-app conflicts
 - 📊 **Risk scoring** — every finding ranked by severity with actionable fix suggestions
-- 🔍 **Two scan depths** — `direct` (fast) and `local-graph` (follows barrel re-exports recursively)
-- 🔗 **Federation analysis** — aggregates manifests across microfrontends and detects cross-app conflicts
-- 🔌 **Webpack plugin** — extracts `shared` config at build time and can fail builds on critical issues
+- 🔌 **Webpack plugin** — extracts `shared` config at build time, optionally fails the build
 - 📋 **JSON output** — machine-readable report for CI/CD integration
-
-```ts
-// Programmatic API — per-project analysis
-import { buildProjectManifest, analyzeProject, scoreProjectReport } from '@mf-toolkit/shared-inspector';
-
-const manifest = await buildProjectManifest({ name: 'checkout', sourceDirs: ['./src'], sharedConfig: { react: { singleton: true } } });
-const report   = analyzeProject(manifest);
-const { score, label, high } = scoreProjectReport(report);
-// score: 80, label: 'GOOD', high: 0
-
-// Webpack plugin — sharedConfig auto-extracted from ModuleFederationPlugin, no duplication
-new MfSharedInspectorPlugin({ sourceDirs: ['./src'], warn: true, writeManifest: true });
-```
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
 
