@@ -13,6 +13,7 @@ Project options:
   --kind <kind>                Project role: host | remote | unknown (default: unknown)
   --fail-on <rule>             Exit 1 when findings match: mismatch | unused | any
   --min-score <n>              Exit 1 when score is below n (0–100)
+  --json                       Output findings as JSON (suppresses spinner and banner)
   --write-manifest             Write project-manifest.json to output dir
   --output-dir <dir>           Output directory for manifest (default: .)
   --interactive, -i            Launch step-by-step wizard instead of flags
@@ -22,6 +23,7 @@ Project options:
 Federation options:
   --fail-on <rule>             Exit 1 when findings match: mismatch | unused | any
   --min-score <n>              Exit 1 when federation score is below n (0–100)
+  --json                       Output findings as JSON
 
 Federation:
   mf-inspector federation checkout.json catalog.json cart.json

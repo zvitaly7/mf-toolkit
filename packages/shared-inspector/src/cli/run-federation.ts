@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { analyzeFederation } from '../analyzer/analyze-federation.js';
 import { formatFederationReport } from '../reporter/format-federation-report.js';
 import { scoreFederationReport } from '../reporter/scoring.js';
-import { createSpinner } from './spinner.js';
+import { createSpinner, createNullSpinner } from './spinner.js';
 import { colorizeReport } from './colorize-report.js';
 import type { FederationReport } from '../types.js';
 import type { CliArgs } from './types.js';
@@ -33,7 +33,7 @@ export async function runFederation(
     return 1;
   }
 
-  const spinner = createSpinner();
+  const spinner = args.json ? createNullSpinner() : createSpinner();
   spinner.start(`Loading ${args.manifestFiles.length} manifest${args.manifestFiles.length > 1 ? 's' : ''}`);
 
   const manifests = [];
@@ -63,14 +63,17 @@ export async function runFederation(
   spinner.succeed(`Loaded ${manifests.length} manifest${manifests.length > 1 ? 's' : ''}`);
 
   const report = analyzeFederation(manifests);
-  write(colorizeReport(formatFederationReport(report)));
+  const score = scoreFederationReport(report);
+
+  if (args.json) {
+    write(JSON.stringify({ ...report, score }, null, 2) + '\n');
+  } else {
+    write(colorizeReport(formatFederationReport(report)));
+  }
 
   if (args.failOn && shouldFailFederation(report, args.failOn)) return 1;
 
-  if (args.minScore !== undefined) {
-    const { score } = scoreFederationReport(report);
-    if (score < args.minScore) return 1;
-  }
+  if (args.minScore !== undefined && score.score < args.minScore) return 1;
 
   return 0;
 }
