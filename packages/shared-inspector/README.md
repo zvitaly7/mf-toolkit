@@ -6,14 +6,14 @@
 
 **Stop debugging Module Federation in production.**
 
-`shared` config breaks in silence — wrong versions ship, 10× React ends up in the bundle, singleton chains collapse, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time. Every finding comes with a risk score and a ready-to-paste fix.
+`shared` config breaks in silence — wrong versions ship, duplicate React copies can end up in the bundle, singleton negotiation fails, and teams get paged for "Invalid hook call" on Friday night. `shared-inspector` catches these mistakes at build time. Every finding comes with a risk score and a ready-to-paste fix.
 
 ## The problem
 
 Module Federation teams manually manage `shared` config and make three kinds of mistakes:
 
 - **Over-sharing** — packages listed in `shared` that the microfrontend never imports. Creates artificial version coupling between independent teams.
-- **Under-sharing** — packages used by both host and remote but missing from `shared`. Each microfrontend bundles its own copy (10× React = 10× 130 KB).
+- **Under-sharing** — packages used by both host and remote but missing from `shared`. Each microfrontend may bundle its own copy (e.g. multiple React instances, each ~130 KB).
 - **Version mismatch** — `requiredVersion` doesn't match the installed version. Module Federation silently falls back to a local bundle. For packages with global state (React, styled-components) this causes "Invalid hook call" in production.
 
 Existing tools (webpack-bundle-analyzer, source-map-explorer) show *what ended up in the bundle*, not *why shared config is suboptimal*. Different questions.
@@ -104,7 +104,7 @@ Each finding is rendered as a diagnostic card: what's wrong, what breaks at runt
    💡 Fix: Remove "lodash" from shared config
 
 →  Not Shared — mobx (12 imports in 8 files via re-export in src/shared/index.ts)
-   → Risk: Each MF gets its own MobX — observables and reactions won't sync between MFs
+   → Risk: Each MF may get its own MobX instance — observables and reactions can fail to sync between MFs
    💡 Fix:
    shared: {
      mobx: { singleton: true }
@@ -286,7 +286,7 @@ console.log(formatFederationReport(report));
 // ⚠  Version Conflict — react
 //    checkout: ^17.0.0
 //    catalog: ^18.0.0
-//    → Risk: MF singleton negotiation will silently load wrong version → Invalid hook call
+//    → Risk: MF singleton negotiation may silently load the wrong version → Invalid hook call
 //    💡 Fix: shared: { react: { singleton: true, requiredVersion: "^18.0.0" } }
 //
 // Score: 60/100  🟠 RISKY
