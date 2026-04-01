@@ -34,6 +34,65 @@ Bundle analyzers (webpack-bundle-analyzer, source-map-explorer, stats.json inspe
 
 In short: bundle analyzers are useful for post-build inspection. `shared-inspector` is focused on the `shared` config itself — catching misconfiguration at build time and explaining what the runtime consequences would be.
 
+## Example
+
+A `shell` host app (React 18) and a `checkout` remote have been developed by separate teams. Their `shared` configs have drifted:
+
+```js
+// shell — webpack.config.js
+shared: {
+  react:     { singleton: true, requiredVersion: '^18.2.0' },
+  'react-dom': { singleton: true, requiredVersion: '^18.2.0' },
+  zustand:   { singleton: true },
+}
+
+// checkout — webpack.config.js
+shared: {
+  react:     { singleton: true, requiredVersion: '^17.0.2' }, // ← stale version
+  'react-dom': { singleton: true, requiredVersion: '^17.0.2' },
+  lodash:    {},                                               // ← never imported
+  // zustand: missing — checkout imports it, but it's not in shared
+}
+```
+
+Running `npx @mf-toolkit/shared-inspector` in the `checkout` project:
+
+```
+[MfSharedInspector] checkout (depth: local-graph, 34 files scanned)
+────────────────────────────────────────────────────────────
+
+⚠  Version Mismatch — react
+   configured: ^17.0.2 | installed: 17.0.2
+   → Risk: Invalid hook call, broken context across MFs
+   💡 Fix:
+   shared: {
+     react: { singleton: true, requiredVersion: "^18.2.0" }
+   }
+
+→  Not Shared — zustand (8 imports in 5 files)
+   → Risk: Each MF may get its own store instance — state changes may not propagate across MFs
+   💡 Fix:
+   shared: {
+     zustand: { singleton: true }
+   }
+
+✗  Unused Shared — lodash
+   0 imports, shared without singleton
+   → Wastes bundle negotiation overhead with no benefit
+   💡 Fix: Remove "lodash" from shared config
+
+────────────────────────────────────────────────────────────
+Score: 69/100  🟠 RISKY
+```
+
+**After applying the three suggested fixes** — `react` version aligned, `zustand` added to `shared`, `lodash` removed:
+
+```
+Score: 100/100  ✅ HEALTHY
+```
+
+The cross-team federation report also clears: `shell` and `checkout` now negotiate a single React instance and a single Zustand store at runtime.
+
 ## Installation
 
 ```bash
