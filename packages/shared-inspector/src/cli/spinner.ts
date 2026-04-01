@@ -18,6 +18,10 @@ export interface Spinner {
   stop(): void;
 }
 
+export function createNullSpinner(): Spinner {
+  return { start() {}, succeed() {}, stop() {} };
+}
+
 export function createSpinner(): Spinner {
   if (!isTTY) {
     // Non-TTY (CI, piped): emit plain text lines via stdout
