@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { analyzeFederation } from '../analyzer/analyze-federation.js';
 import { formatFederationReport } from '../reporter/format-federation-report.js';
+import { scoreFederationReport } from '../reporter/scoring.js';
 import { createSpinner } from './spinner.js';
 import { colorizeReport } from './colorize-report.js';
+import type { FederationReport } from '../types.js';
 import type { CliArgs } from './types.js';
 
 function isUrl(source: string): boolean {
@@ -62,5 +64,29 @@ export async function runFederation(
 
   const report = analyzeFederation(manifests);
   write(colorizeReport(formatFederationReport(report)));
+
+  if (args.failOn && shouldFailFederation(report, args.failOn)) return 1;
+
+  if (args.minScore !== undefined) {
+    const { score } = scoreFederationReport(report);
+    if (score < args.minScore) return 1;
+  }
+
   return 0;
+}
+
+function shouldFailFederation(
+  report: FederationReport,
+  failOn: 'mismatch' | 'unused' | 'any',
+): boolean {
+  switch (failOn) {
+    case 'mismatch': return report.versionConflicts.length > 0;
+    case 'unused':   return report.ghostShares.length > 0;
+    case 'any':      return (
+      report.versionConflicts.length > 0 ||
+      report.singletonMismatches.length > 0 ||
+      report.hostGaps.length > 0 ||
+      report.ghostShares.length > 0
+    );
+  }
 }

@@ -435,6 +435,123 @@ describe('main', () => {
     vi.unstubAllGlobals();
   });
 
+  it('federation: returns 1 when --fail-on mismatch and version conflicts exist', async () => {
+    vi.mocked(analyzeFederation).mockReturnValue({
+      ghostShares: [], hostGaps: [], singletonMismatches: [],
+      versionConflicts: [{ package: 'react', versions: { checkout: '^17', cart: '^18' } }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 1, singletonMismatchesCount: 0 },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: async () => JSON.stringify(makeManifest()),
+    }));
+
+    const code = await main(
+      ['federation', 'https://cdn.example.com/a.json', '--fail-on', 'mismatch'],
+      () => {},
+    );
+    expect(code).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: returns 0 when --fail-on mismatch and no version conflicts', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: async () => JSON.stringify(makeManifest()),
+    }));
+
+    const code = await main(
+      ['federation', 'https://cdn.example.com/a.json', '--fail-on', 'mismatch'],
+      () => {},
+    );
+    expect(code).toBe(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: returns 1 when --fail-on any and host gaps exist', async () => {
+    vi.mocked(analyzeFederation).mockReturnValue({
+      ghostShares: [], versionConflicts: [], singletonMismatches: [],
+      hostGaps: [{ package: 'mobx', missingIn: ['cart'] }],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 1, versionConflictsCount: 0, singletonMismatchesCount: 0 },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: async () => JSON.stringify(makeManifest()),
+    }));
+
+    const code = await main(
+      ['federation', 'https://cdn.example.com/a.json', '--fail-on', 'any'],
+      () => {},
+    );
+    expect(code).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: returns 1 when --min-score threshold not met', async () => {
+    vi.mocked(analyzeFederation).mockReturnValue({
+      ghostShares: [], hostGaps: [], singletonMismatches: [],
+      versionConflicts: [
+        { package: 'react', versions: { a: '^17', b: '^18' } },
+        { package: 'react-dom', versions: { a: '^17', b: '^18' } },
+      ],
+      summary: { totalManifests: 2, ghostSharesCount: 0, hostGapsCount: 0, versionConflictsCount: 2, singletonMismatchesCount: 0 },
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: async () => JSON.stringify(makeManifest()),
+    }));
+
+    const code = await main(
+      ['federation', 'https://cdn.example.com/a.json', '--min-score', '90'],
+      () => {},
+    );
+    expect(code).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('federation: returns 1 on invalid --fail-on', async () => {
+    const chunks: string[] = [];
+    const code = await main(['federation', 'a.json', '--fail-on', 'bad'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('Invalid --fail-on');
+  });
+
+  it('federation: returns 1 on invalid --min-score', async () => {
+    const chunks: string[] = [];
+    const code = await main(['federation', 'a.json', '--min-score', 'abc'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('Invalid --min-score');
+  });
+
+  it('project: passes kind to buildProjectManifest', async () => {
+    await main(['--kind', 'host'], () => {});
+    expect(buildProjectManifest).toHaveBeenCalledWith(expect.objectContaining({ kind: 'host' }));
+  });
+
+  it('project: returns 1 when --min-score not met', async () => {
+    vi.mocked(analyzeProject).mockReturnValue(
+      makeReport({ mismatched: [{ package: 'react', configured: '^18', installed: '17.0.0' }] }),
+    );
+    const code = await main(['--min-score', '90'], () => {});
+    expect(code).toBe(1);
+  });
+
+  it('project: returns 0 when --min-score met', async () => {
+    vi.mocked(analyzeProject).mockReturnValue(makeReport());
+    const code = await main(['--min-score', '50'], () => {});
+    expect(code).toBe(0);
+  });
+
+  it('project: returns 1 on invalid --kind', async () => {
+    const chunks: string[] = [];
+    const code = await main(['--kind', 'invalid'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('Invalid --kind');
+  });
+
+  it('project: returns 1 on invalid --min-score', async () => {
+    const chunks: string[] = [];
+    const code = await main(['--min-score', '-5'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('Invalid --min-score');
+  });
+
   it('federation: mixes local files and URLs', async () => {
     const m1 = makeManifest('local-app');
     const m2 = makeManifest('remote-app');

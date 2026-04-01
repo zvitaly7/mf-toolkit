@@ -4,6 +4,7 @@ import { buildProjectManifest } from '../collector/build-project-manifest.js';
 import { analyzeProject } from '../analyzer/analyze-project.js';
 import { formatReport } from '../reporter/format-report.js';
 import { writeManifest } from '../reporter/write-report.js';
+import { scoreProjectReport } from '../reporter/scoring.js';
 import { createSpinner } from './spinner.js';
 import { colorizeReport } from './colorize-report.js';
 import type { ProjectReport } from '../types.js';
@@ -45,6 +46,7 @@ export async function runProject(
     sharedConfig: args.sharedConfig,
     tsconfigPath: args.tsconfigPath,
     workspacePackages: args.workspacePackages,
+    kind: args.kind,
   });
 
   spinner.succeed(`Scanned ${manifest.source.filesScanned} files`);
@@ -64,6 +66,11 @@ export async function runProject(
   }
 
   if (args.failOn && shouldFail(report, args.failOn)) return 1;
+
+  if (args.minScore !== undefined) {
+    const { score } = scoreProjectReport(report);
+    if (score < args.minScore) return 1;
+  }
 
   return 0;
 }
