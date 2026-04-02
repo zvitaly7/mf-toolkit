@@ -641,6 +641,51 @@ Total: 4 shared, 4 used, 0 unused, 0 candidates, 0 mismatch, 1 eager risks
 > separately reveals that drift is not always in one place — two teams can have
 > independent issues simultaneously.
 
+#### Webpack plugin alternative (catalog)
+
+Instead of running the CLI manually, `catalog` can integrate the inspector directly into
+its webpack build. This is the recommended setup for teams that want CI to catch drift
+automatically on every build.
+
+**catalog/webpack.config.js**
+```typescript
+const { ModuleFederationPlugin } = require('webpack').container;
+const { MfSharedInspectorPlugin } = require('@mf-toolkit/shared-inspector/webpack');
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'mf-storefront-catalog',
+      shared: require('./shared-config.json'),
+    }),
+
+    new MfSharedInspectorPlugin({
+      sourceDirs: ['./src'],
+      // sharedConfig auto-extracted from ModuleFederationPlugin above
+      failOn: 'mismatch',      // exit 1 when any version mismatch is detected
+      warn: true,              // print findings to console even without failOn
+      writeManifest: true,     // emit project-manifest.json for federation analysis
+      outputDir: '.',
+    }),
+  ],
+};
+```
+
+In drift state, the webpack build exits with code 1 and prints:
+
+```
+[MfSharedInspector] mf-storefront-catalog — build failed (failOn: mismatch)
+
+⚠  Version Mismatch — react     configured: ^17.0.2 | installed: 18.3.1
+⚠  Version Mismatch — react-dom configured: ^17.0.2 | installed: 18.3.1
+
+2 mismatch(es) found. Exiting with code 1.
+```
+
+> **Demo note:** Same findings as the CLI run, but the build itself fails. CI never
+> produces a deployable artifact. The team is blocked until the config is fixed —
+> this is the intended behaviour for HIGH-severity drift.
+
 ---
 
 ### Scenario 3 — Federation Issues
