@@ -944,6 +944,135 @@ git checkout scenario/federation-issues  # Scenario 3 — cross-MF conflicts
 
 ---
 
+## Poly-repo simulation
+
+This section shows how the exact same inspector setup works when each MF lives in its
+own repository. The only difference is how `project-manifest.json` files are exchanged.
+
+### Per-app CI workflow (same for all three MFs)
+
+Each MF repo has an identical `.github/workflows/build.yml`. The inspector runs during
+the build and uploads the manifest as a CI artifact:
+
+```yaml
+# shell/.github/workflows/build.yml
+# catalog/.github/workflows/build.yml
+# checkout/.github/workflows/build.yml
+
+name: Build and inspect
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - run: npm ci
+
+      # MfSharedInspectorPlugin runs during build and writes project-manifest.json
+      - run: npm run build
+
+      # Upload manifest so the federation job can download it
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ github.event.repository.name }}
+          path: project-manifest.json
+          retention-days: 7
+```
+
+### Federation analysis job (runs in shell repo or a dedicated infra repo)
+
+After all three MF builds complete, a separate job downloads the manifests and runs
+federation analysis:
+
+```yaml
+# shell/.github/workflows/build.yml (continued) — or a separate federation.yml
+
+  federation:
+    runs-on: ubuntu-latest
+    needs: [build]   # in poly-repo: triggered by workflow_dispatch or schedule
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+
+      # Download manifests from each MF's latest successful build
+      - uses: actions/download-artifact@v4
+        with: { name: manifest-shell-mf,    path: manifests/ }
+      - uses: actions/download-artifact@v4
+        with: { name: manifest-catalog-mf,  path: manifests/ }
+      - uses: actions/download-artifact@v4
+        with: { name: manifest-checkout-mf, path: manifests/ }
+
+      # Federation analysis — same command as monorepo, different paths
+      - run: |
+          npx @mf-toolkit/shared-inspector federation \
+            manifests/manifest-shell-mf/project-manifest.json \
+            manifests/manifest-catalog-mf/project-manifest.json \
+            manifests/manifest-checkout-mf/project-manifest.json
+```
+
+> **Demo note:** In the monorepo demo the manifests are already in sibling folders.
+> In poly-repo the only change is the download step before the federation command.
+> The `shared-inspector` invocation is identical — this is the key point to show.
+
+### `scripts/inspect-polyrepo.sh` — local simulation
+
+Simulates the poly-repo flow locally by treating each app directory as an isolated
+workspace (no shared `node_modules`, separate `npm ci` per app):
+
+```bash
+#!/usr/bin/env bash
+set -e
+
+MANIFESTS_DIR="$(pwd)/.manifests"
+mkdir -p "$MANIFESTS_DIR"
+
+echo "=== shell (isolated) ==="
+(cd shell && npm ci --silent && npx @mf-toolkit/shared-inspector \
+  --source src --shared shared-config.json \
+  --write-manifest --output-dir "$MANIFESTS_DIR" \
+  --name shell)
+
+echo "=== catalog (isolated) ==="
+(cd catalog && npm ci --silent && npx @mf-toolkit/shared-inspector \
+  --source src --shared shared-config.json \
+  --write-manifest --output-dir "$MANIFESTS_DIR" \
+  --name catalog)
+
+echo "=== checkout (isolated) ==="
+(cd checkout && npm ci --silent && npx @mf-toolkit/shared-inspector \
+  --source src --shared shared-config.json \
+  --write-manifest --output-dir "$MANIFESTS_DIR" \
+  --name checkout)
+
+echo "=== federation (from collected manifests) ==="
+npx @mf-toolkit/shared-inspector federation \
+  "$MANIFESTS_DIR"/shell-project-manifest.json \
+  "$MANIFESTS_DIR"/catalog-project-manifest.json \
+  "$MANIFESTS_DIR"/checkout-project-manifest.json
+
+rm -rf "$MANIFESTS_DIR"
+```
+
+Add to root `package.json`:
+
+```json
+{
+  "scripts": {
+    "inspect:polyrepo": "bash scripts/inspect-polyrepo.sh"
+  }
+}
+```
+
+---
+
 ## Appendix: Detection Category Alignment
 
 | Detection category | Scenario 1 | Scenario 2 | Scenario 3 |
