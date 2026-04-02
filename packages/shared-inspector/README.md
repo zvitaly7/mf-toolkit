@@ -4,6 +4,8 @@
 [![license](https://img.shields.io/npm/l/@mf-toolkit/shared-inspector?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
 
+![shared-inspector banner](./assets/banner.jpeg)
+
 **Validate Module Federation `shared` config at build time.**
 
 `shared` config errors are silent — mismatched versions, broken singleton negotiation, duplicate instances in the bundle. `shared-inspector` surfaces these issues before they reach production. Every finding includes a risk score and a ready-to-paste fix.
@@ -248,6 +250,8 @@ jobs:
 ```
 
 ## Federation mode
+
+![Federation mode: detects version conflicts across microfrontends before they reach runtime](./assets/federation-mode.jpeg)
 
 Once each MF has emitted its manifest, aggregate them to detect cross-team conflicts: version mismatches, singleton inconsistencies, and shared-config gaps across host and remotes.
 
