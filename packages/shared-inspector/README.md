@@ -112,8 +112,6 @@ npx @mf-toolkit/shared-inspector
 The tool scans `./src`, reads installed versions from `package.json`, and prints a diagnostic report. Each finding includes what's wrong, what breaks at runtime, and a ready-to-paste fix:
 
 ```
-  mf-inspector  v0.5.2
-
 ✓  Scanned 47 files
 
 [MfSharedInspector] checkout (depth: local-graph, 47 files scanned)
