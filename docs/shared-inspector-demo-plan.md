@@ -229,6 +229,71 @@ export const formatProductTitle = (title: string) =>
 **shell/src/store/authStore.ts** — must import from `zustand`.
 **checkout/src/store/cartStore.ts** — must import from `zustand`.
 
+**catalog/src/utils/index.ts** — barrel that re-exports from `format.ts`. This is the
+critical file for the depth demo: `ProductList.tsx` imports via this barrel, not from
+`lodash` directly.
+
+```typescript
+// catalog/src/utils/index.ts
+export { formatProductTitle } from './format';
+```
+
+**catalog/src/ProductList.tsx** — must import via the barrel, not from `lodash` directly:
+
+```typescript
+import { formatProductTitle } from './utils'; // relative barrel — lodash is invisible to --depth direct
+```
+
+### Depth demonstration
+
+This subsection shows why `--depth local-graph` is the default and when `--depth direct`
+gives a misleading clean result.
+
+With the barrel in place, run catalog's analysis twice:
+
+```bash
+# direct mode — only sees explicit external imports; skips relative ./utils
+npx @mf-toolkit/shared-inspector --source src --shared shared-config.json --depth direct
+```
+
+```
+[MfSharedInspector] mf-storefront-catalog (depth: direct, 9 files scanned)
+────────────────────────────────────────────────────────────
+
+  ✓  No issues found. Shared config looks good.
+
+────────────────────────────────────────────────────────────
+Score: 100/100  ✅ HEALTHY
+
+Total: 3 shared, 3 used, 0 unused, 0 candidates, 0 mismatch, 0 eager risks
+```
+
+```bash
+# local-graph mode (default) — follows ./utils → format.ts → finds lodash
+npx @mf-toolkit/shared-inspector --source src --shared shared-config.json --depth local-graph
+```
+
+```
+[MfSharedInspector] mf-storefront-catalog (depth: local-graph, 9 files scanned)
+────────────────────────────────────────────────────────────
+
+→  Not Shared — lodash (3 imports in 1 file via re-export in src/utils/index.ts)
+   → Risk: Each MF may bundle its own copy
+   💡 Fix:
+   shared: {
+     lodash: { singleton: true }
+   }
+
+────────────────────────────────────────────────────────────
+Score: 92/100  ✅ HEALTHY
+
+Total: 3 shared, 3 used, 0 unused, 1 candidates, 0 mismatch, 0 eager risks
+```
+
+> **Demo note:** `--depth direct` scores 100 — a false clean. `--depth local-graph`
+> surfaces the lodash candidate. This is the case for projects that expose utilities
+> through barrel files, which is the norm in any moderately-sized MF codebase.
+
 ---
 
 ## Scenario 2: Drift
