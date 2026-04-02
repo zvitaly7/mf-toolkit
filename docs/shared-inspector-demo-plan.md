@@ -800,22 +800,99 @@ Total: 3 MFs, 1 version conflicts, 1 singleton mismatches, 1 host gaps, 1 ghost 
 ```bash
 #!/usr/bin/env bash
 set -e
+
+WORKSPACE_PKGS="@mf-storefront/*"
+FAIL_ON="${FAIL_ON:-none}"   # override: FAIL_ON=mismatch bash scripts/inspect-all.sh
+
 echo "=== shell ==="
-cd shell && npx mf-inspector --source src --shared shared-config.json --write-manifest --output-dir . && cd ..
+(cd shell && npx @mf-toolkit/shared-inspector \
+  --source src \
+  --shared shared-config.json \
+  --workspace-packages "$WORKSPACE_PKGS" \
+  --write-manifest --output-dir . \
+  --fail-on "$FAIL_ON")
+
 echo "=== catalog ==="
-cd catalog && npx mf-inspector --source src --shared shared-config.json --write-manifest --output-dir . && cd ..
+(cd catalog && npx @mf-toolkit/shared-inspector \
+  --source src \
+  --shared shared-config.json \
+  --workspace-packages "$WORKSPACE_PKGS" \
+  --write-manifest --output-dir . \
+  --fail-on "$FAIL_ON")
+
 echo "=== checkout ==="
-cd checkout && npx mf-inspector --source src --shared shared-config.json --write-manifest --output-dir . && cd ..
+(cd checkout && npx @mf-toolkit/shared-inspector \
+  --source src \
+  --shared shared-config.json \
+  --workspace-packages "$WORKSPACE_PKGS" \
+  --write-manifest --output-dir . \
+  --fail-on "$FAIL_ON")
+
 echo "=== federation ==="
-npx mf-inspector federation \
+npx @mf-toolkit/shared-inspector federation \
   shell/project-manifest.json \
   catalog/project-manifest.json \
   checkout/project-manifest.json
 ```
 
-24. Add a root `package.json` script: `"inspect": "bash scripts/inspect-all.sh"`
-25. Document the three `git checkout` commands in the README so demo runners can switch
-    between scenarios in under 10 seconds
+Running on the healthy branch exits 0. Running on `scenario/drift` with
+`FAIL_ON=mismatch bash scripts/inspect-all.sh` exits 1 at the catalog step.
+
+24. Write `scripts/federation-gate.ts` — programmatic score gate for CI:
+
+```typescript
+import { readFileSync } from 'fs';
+import {
+  analyzeFederation,
+  scoreFederationReport,
+  formatFederationReport,
+} from '@mf-toolkit/shared-inspector';
+import type { ProjectManifest } from '@mf-toolkit/shared-inspector';
+
+const SCORE_THRESHOLD = 70;
+
+const manifests: ProjectManifest[] = [
+  'shell/project-manifest.json',
+  'catalog/project-manifest.json',
+  'checkout/project-manifest.json',
+].map((p) => JSON.parse(readFileSync(p, 'utf-8')));
+
+const report = analyzeFederation(manifests);
+const { score, label, high, medium, low } = scoreFederationReport(report);
+
+console.log(formatFederationReport(report));
+console.log(`\nFederation score: ${score}/100 (${label})`);
+console.log(`  HIGH: ${high}  MEDIUM: ${medium}  LOW: ${low}`);
+
+if (score < SCORE_THRESHOLD) {
+  console.error(`\n✗ Score ${score} is below threshold ${SCORE_THRESHOLD}. Failing CI.`);
+  process.exit(1);
+}
+
+console.log(`\n✓ Score ${score} meets threshold ${SCORE_THRESHOLD}. OK.`);
+```
+
+Add to root `package.json`:
+
+```json
+{
+  "scripts": {
+    "inspect":          "bash scripts/inspect-all.sh",
+    "inspect:ci":       "FAIL_ON=mismatch bash scripts/inspect-all.sh",
+    "inspect:fed":      "npx ts-node scripts/federation-gate.ts",
+    "inspect:all":      "npm run inspect:ci && npm run inspect:fed"
+  }
+}
+```
+
+25. Document the three `git checkout` commands in the repo README so demo runners can
+    switch between scenarios in under 10 seconds:
+
+```bash
+git checkout main                    # Scenario 1 — healthy
+git checkout scenario/drift          # Scenario 2 — catalog + checkout issues
+git checkout scenario/federation-issues  # Scenario 3 — cross-MF conflicts
+```
 
 ---
 
