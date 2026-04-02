@@ -9,9 +9,9 @@ A practical implementation guide for a controlled, realistic demo repo that demo
 
 **Name:** `mf-storefront-demo`
 
-A microfrontend e-commerce storefront split into three independently deployable apps that
-share a common shell (host). The architecture mirrors real-world setups where teams own
-separate domains and drift naturally occurs over time.
+A microfrontend e-commerce storefront split into three independently deployable apps.
+The architecture mirrors real-world setups where teams own separate domains and
+dependency config drift naturally occurs over time.
 
 **Apps:**
 | App | Role | Domain |
@@ -20,13 +20,41 @@ separate domains and drift naturally occurs over time.
 | `catalog` | Remote | Product listing, search, filters |
 | `checkout` | Remote | Cart, order summary, payment flow |
 
-Each scenario is a separate Git branch or tagged commit in the demo repo. The `healthy`
-state is `main`; `drift` and `federation-issues` are separate branches with surgical
-changes applied on top.
+### Monorepo vs poly-repo
 
-**Tool being demonstrated:**
-- Per-app analysis: `npx mf-inspector --source src --shared shared-config.json`
-- Cross-app federation analysis: `npx mf-inspector federation shell/project-manifest.json catalog/project-manifest.json checkout/project-manifest.json`
+In production, microfrontends almost always live in **separate repositories** — one team,
+one repo, independent CI pipelines. A monorepo is the exception, not the rule.
+
+This demo repo is structured as a **monorepo for convenience**, but each app is designed
+as if it were an independent repository:
+
+- Each app has its own `package.json`, `tsconfig.json`, `webpack.config.js`, and
+  `.github/workflows/build.yml`
+- Apps share no local imports — no workspace symlinks, no cross-app `require()`
+- The only cross-app artifact is `project-manifest.json`, which is how `shared-inspector`
+  bridges both worlds
+
+**Why this works:** `shared-inspector`'s per-app analysis runs entirely within one app's
+directory. Federation analysis only needs the manifest files — it doesn't care whether
+they came from a sibling folder or were downloaded from a CI artifact store:
+
+```
+Monorepo (this demo):            Poly-repo (real world):
+  shell/project-manifest.json      downloaded from shell-repo CI
+  catalog/project-manifest.json    downloaded from catalog-repo CI
+  checkout/project-manifest.json   downloaded from checkout-repo CI
+         ↓                                  ↓
+  npx shared-inspector federation *.json  ← same command, same output
+```
+
+Each scenario is a separate Git branch. The `healthy` state is `main`;
+`drift` and `federation-issues` are branches with surgical changes on top.
+
+**Entry points demonstrated:**
+- Per-app CLI: `npx @mf-toolkit/shared-inspector --source src --shared shared-config.json`
+- Per-app webpack plugin: `MfSharedInspectorPlugin` in `webpack.config.js`
+- Federation CLI: `npx @mf-toolkit/shared-inspector federation shell/project-manifest.json ...`
+- Federation programmatic: `analyzeFederation()` in `scripts/federation-gate.ts`
 
 ---
 
