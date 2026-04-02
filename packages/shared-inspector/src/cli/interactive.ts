@@ -8,6 +8,21 @@ export async function runInteractive(
 ): Promise<CliArgs> {
   write('\n[MfSharedInspector] Interactive setup\n\n');
 
+  const modeRaw = await prompt('Analyse single project or multiple microfrontends? (project / federation, default: project): ');
+  const mode = modeRaw.trim().toLowerCase();
+
+  if (mode === 'federation') {
+    return runInteractiveFederation(args, write, prompt);
+  }
+
+  return runInteractiveProject(args, write, prompt);
+}
+
+async function runInteractiveProject(
+  args: CliArgs,
+  write: (s: string) => void,
+  prompt: PromptFn,
+): Promise<CliArgs> {
   const sourceDirsRaw = await prompt('Source directories to scan (default: ./src): ');
   args.sourceDirs = sourceDirsRaw.trim()
     ? sourceDirsRaw.split(',').map((s) => s.trim()).filter(Boolean)
@@ -27,19 +42,59 @@ export async function runInteractive(
     ? wsRaw.split(',').map((s) => s.trim()).filter(Boolean)
     : [];
 
+  const kindRaw = await prompt('Project role — host / remote / unknown (default: unknown): ');
+  const kindVal = kindRaw.trim().toLowerCase();
+  args.kind = (['host', 'remote', 'unknown'] as const).includes(kindVal as never)
+    ? (kindVal as 'host' | 'remote' | 'unknown')
+    : undefined;
+
   const failOnRaw = await prompt('Fail build on findings — mismatch / unused / any / none (default: none): ');
   const failOnVal = failOnRaw.trim();
   args.failOn = (['mismatch', 'unused', 'any'] as const).includes(failOnVal as never)
     ? (failOnVal as 'mismatch' | 'unused' | 'any')
     : undefined;
 
-  const writeManifestRaw = await prompt('Write project-manifest.json? (y/N): ');
+  const minScoreRaw = await prompt('Minimum score threshold 0–100 (empty to skip): ');
+  const minScoreVal = Number(minScoreRaw.trim());
+  args.minScore = minScoreRaw.trim() && !isNaN(minScoreVal) ? minScoreVal : undefined;
+
+  const jsonRaw = await prompt('Output as JSON? (y/N): ');
+  args.json = jsonRaw.trim().toLowerCase() === 'y';
+
+  const writeManifestRaw = await prompt('Write project-manifest.json for federation analysis? (y/N): ');
   args.writeManifest = writeManifestRaw.trim().toLowerCase() === 'y';
 
   if (args.writeManifest) {
     const outputDirRaw = await prompt('Output directory for manifest (default: .): ');
     args.outputDir = outputDirRaw.trim() || '.';
   }
+
+  write('\n');
+  return args;
+}
+
+async function runInteractiveFederation(
+  args: CliArgs,
+  write: (s: string) => void,
+  prompt: PromptFn,
+): Promise<CliArgs> {
+  args.command = 'federation';
+
+  const sourcesRaw = await prompt('Manifest files or URLs, space-separated: ');
+  args.manifestFiles = sourcesRaw.trim().split(/\s+/).filter(Boolean);
+
+  const failOnRaw = await prompt('Fail on findings — mismatch / unused / any / none (default: none): ');
+  const failOnVal = failOnRaw.trim();
+  args.failOn = (['mismatch', 'unused', 'any'] as const).includes(failOnVal as never)
+    ? (failOnVal as 'mismatch' | 'unused' | 'any')
+    : undefined;
+
+  const minScoreRaw = await prompt('Minimum score threshold 0–100 (empty to skip): ');
+  const minScoreVal = Number(minScoreRaw.trim());
+  args.minScore = minScoreRaw.trim() && !isNaN(minScoreVal) ? minScoreVal : undefined;
+
+  const jsonRaw = await prompt('Output as JSON? (y/N): ');
+  args.json = jsonRaw.trim().toLowerCase() === 'y';
 
   write('\n');
   return args;
