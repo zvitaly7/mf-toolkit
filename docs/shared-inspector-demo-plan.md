@@ -695,9 +695,9 @@ In drift state, the webpack build exits with code 1 and prints:
 Running `mf-inspector` against `shell`, `catalog`, and `checkout` individually in
 Scenario 3 each returns a clean or near-clean result:
 
-- `shell`: score 97 (1 LOW — lodash is ghost-shared but unused shared detected per-app)
-- `catalog`: score 92 (1 MEDIUM — lodash candidate, same as healthy)
-- `checkout`: score 97 (1 MEDIUM — zustand missing singleton, caught per-app)
+- `shell`: score 97 (1 LOW — lodash unused in shell's shared config, per-app)
+- `catalog`: score 92 (1 MEDIUM — lodash candidate, same as healthy baseline)
+- `checkout`: score 92 (1 MEDIUM — zustand missing singleton: true, caught per-app)
 
 > **Demo note:** This is the key point of Scenario 3 — per-app analysis gives a false
 > sense of safety. The dangerous issues only surface in federation mode.
@@ -777,11 +777,12 @@ Total: 3 MFs, 1 version conflicts, 1 singleton mismatches, 1 host gaps, 1 ghost 
 ### Phase 3 — Drift scenario (30 minutes)
 
 10. Create branch `scenario/drift`
-11. Modify only `catalog/shared-config.json` and `catalog/package.json` as described
-12. Regenerate `catalog/project-manifest.json` via `--write-manifest`
-13. Run per-app inspector against `catalog` — verify CRITICAL score and exact findings
-14. Run federation analysis — verify it passes cleanly (drift is per-app only)
-15. Commit and tag as `v2-drift`
+11. Modify `catalog/shared-config.json` and `catalog/package.json` as described
+12. Modify `checkout/shared-config.json`: set `react-router-dom` to `{ "eager": true, "requiredVersion": "^6.22.3" }`
+13. Regenerate `catalog/project-manifest.json` and `checkout/project-manifest.json` via `--write-manifest`
+14. Run per-app inspector against all three — verify catalog CRITICAL (38/100), checkout HEALTHY (92/100), shell clean
+15. Run federation analysis — verify it passes cleanly (all drift is per-app only)
+16. Commit and tag as `v2-drift`
 
 ### Phase 4 — Federation issues scenario (30 minutes)
 
@@ -902,9 +903,9 @@ git checkout scenario/federation-issues  # Scenario 3 — cross-MF conflicts
 |---|---|---|---|
 | `mismatched` (HIGH, -20) | none | react, react-dom in catalog | none (per-app) |
 | `singletonRisks` (MEDIUM, -8) | none | zustand in catalog | zustand in checkout (per-app) |
+| `eagerRisks` (MEDIUM, -8) | none | react-router-dom in checkout | none |
 | `candidates` (MEDIUM, -8) | lodash in catalog | lodash in catalog | lodash in catalog |
 | `unused` (LOW, -3) | none | zustand, date-fns in catalog | lodash in shell (per-app) |
-| `eagerRisks` (MEDIUM, -8) | none | none | none |
 | `versionConflicts` (HIGH, -20) | none | none | react-router-dom across MFs |
 | `singletonMismatches` (MEDIUM, -8) | none | none | zustand across MFs |
 | `hostGaps` (MEDIUM, -8) | none | none | date-fns (used by checkout, shared by none) |
