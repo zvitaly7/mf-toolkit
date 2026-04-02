@@ -9,6 +9,33 @@ Build-time optimization tools for microfrontend architectures. Each package work
 
 ## Packages
 
+### 🔬 MF Shared Inspector — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
+
+[![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
+[![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
+
+**Validate Module Federation `shared` config before it reaches runtime.**
+
+A build-time analyzer that detects version mismatches, singleton gaps, over-sharing, and under-sharing in your MF `shared` config. Supports federation-level analysis across multiple microfrontends via manifest aggregation.
+
+```bash
+npm install @mf-toolkit/shared-inspector --save-dev
+```
+
+**What it does:**
+
+- 🔍 **Detects** version mismatches, singleton gaps, over-sharing, and under-sharing
+- 🔗 **Federation analysis** — aggregates manifests across microfrontends, catches cross-app conflicts
+- 📊 **Risk scoring** — every finding ranked by severity with actionable fix suggestions
+- 🔌 **Webpack plugin** — extracts `shared` config at build time, optionally fails the build
+- 📋 **JSON output** — machine-readable report for CI/CD integration
+
+![Federation mode: detects version conflicts across microfrontends before they reach runtime](./packages/shared-inspector/assets/feature.png)
+
+[![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
+
+---
+
 ### 🎯 SVG Sprite Optimization — [@mf-toolkit/sprite-plugin](./packages/sprite-plugin)
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/sprite-plugin?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/sprite-plugin)
@@ -49,33 +76,6 @@ new MfSpriteWebpackPlugin({
 > **Zero analyzer dependencies by default.** Regex-based parsing keeps install at **17 KB**. Need full AST accuracy? Opt into `parser: 'typescript'` or `parser: 'babel'` — loaded dynamically, zero cost if unused.
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/sprite-plugin)
-
----
-
-### 🔬 MF Shared Inspector — [@mf-toolkit/shared-inspector](./packages/shared-inspector)
-
-[![npm version](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
-[![node](https://img.shields.io/node/v/@mf-toolkit/shared-inspector?color=339933&logo=node.js)](https://nodejs.org)
-
-**Validate Module Federation `shared` config before it reaches runtime.**
-
-A build-time analyzer that detects version mismatches, singleton gaps, over-sharing, and under-sharing in your MF `shared` config. Supports federation-level analysis across multiple microfrontends via manifest aggregation.
-
-```bash
-npm install @mf-toolkit/shared-inspector --save-dev
-```
-
-**What it does:**
-
-- 🔍 **Detects** version mismatches, singleton gaps, over-sharing, and under-sharing
-- 🔗 **Federation analysis** — aggregates manifests across microfrontends, catches cross-app conflicts
-- 📊 **Risk scoring** — every finding ranked by severity with actionable fix suggestions
-- 🔌 **Webpack plugin** — extracts `shared` config at build time, optionally fails the build
-- 📋 **JSON output** — machine-readable report for CI/CD integration
-
-![Federation mode: detects version conflicts across microfrontends before they reach runtime](./packages/shared-inspector/assets/feature.png)
-
-[![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
 
 ---
 
