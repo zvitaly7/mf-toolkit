@@ -1,6 +1,6 @@
 {
   "name": "@mf-toolkit/shared-inspector",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Stop debugging Module Federation in production. Audit shared config at build time.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
