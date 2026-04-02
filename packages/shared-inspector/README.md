@@ -580,6 +580,8 @@ No webpack build required. Runs in seconds on the source tree directly.
 
 ## Known limitations
 
+The tool works well for the vast majority of typical Module Federation setups. The limitations below only apply to edge cases or highly dynamic configurations:
+
 - **TypeScript path aliases without `tsconfigPath`**: aliased imports are treated as external package names.
 - **Dynamic imports with variables** (`import(moduleName)`): not analysed — requires runtime information.
 - **Exact tsconfig alias patterns** (non-wildcard): only `"@alias/*"` wildcard form is supported.
