@@ -112,7 +112,7 @@ npx @mf-toolkit/shared-inspector
 The tool scans `./src`, reads installed versions from `package.json`, and prints a diagnostic report. Each finding includes what's wrong, what breaks at runtime, and a ready-to-paste fix:
 
 ```
-  mf-inspector  v0.4.0
+  mf-inspector  v0.5.2
 
 ✓  Scanned 47 files
 
@@ -169,7 +169,7 @@ Every report ends with a score out of 100:
 | 40–69 | 🟠 RISKY |
 | 0–39 | 🔴 CRITICAL |
 
-## CI mode
+## Advanced: CI integration
 
 Integrate into build pipelines to fail on findings, gate on score, or emit manifests for later federation analysis.
 
@@ -249,7 +249,7 @@ jobs:
         with: { name: manifest-checkout, path: project-manifest.json }
 ```
 
-## Federation mode
+## Advanced: Federation mode
 
 ![Federation mode: detects version conflicts across microfrontends before they reach runtime](./assets/federation-mode.jpeg)
 
