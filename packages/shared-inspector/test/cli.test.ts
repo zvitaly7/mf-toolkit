@@ -622,12 +622,16 @@ describe('main', () => {
 
   it('interactive: runs wizard and passes collected args to project runner', async () => {
     const answers = [
+      '',               // mode (project)
       './app',          // source dirs
       'direct',         // depth
       'react,react-dom',// shared
       '',               // tsconfig (skip)
       '',               // workspace packages (skip)
+      'host',           // kind
       'mismatch',       // fail-on
+      '',               // min-score (skip)
+      'n',              // json
       'n',              // write manifest
     ];
     let i = 0;
@@ -643,11 +647,30 @@ describe('main', () => {
   });
 
   it('interactive: -i flag also triggers wizard', async () => {
-    const answers = ['', '', '', '', '', '', ''];
+    const answers = ['', '', '', '', '', '', '', '', '', '', ''];
     let i = 0;
     const mockPrompt: PromptFn = async () => answers[i++] ?? '';
     const code = await main(['-i'], () => {}, mockPrompt);
     expect(code).toBe(0);
+  });
+
+  it('interactive: federation mode routes to runFederation', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: async () => JSON.stringify(makeManifest()),
+    }));
+    const answers = [
+      'federation',                          // mode
+      'https://cdn.example.com/a.json',      // manifest sources
+      '',                                    // fail-on (skip)
+      '',                                    // min-score (skip)
+      'n',                                   // json
+    ];
+    let i = 0;
+    const mockPrompt: PromptFn = async () => answers[i++] ?? '';
+    const code = await main(['--interactive'], () => {}, mockPrompt);
+    expect(code).toBe(0);
+    expect(analyzeFederation).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
 
@@ -668,7 +691,8 @@ describe('runInteractive', () => {
   }
 
   it('uses defaults when all answers are empty', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '']));
+    // order: mode, sourceDirs, depth, shared, tsconfig, workspace, kind, failOn, minScore, json, writeManifest
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '', '', '', '', '']));
     expect(result.sourceDirs).toEqual(['./src']);
     expect(result.depth).toBe('local-graph');
     expect(result.sharedConfig).toBeUndefined();
@@ -679,62 +703,62 @@ describe('runInteractive', () => {
   });
 
   it('parses source dirs', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['./src,./lib', '', '', '', '', '', '']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', './src,./lib', '', '', '', '', '', '', '', '', '']));
     expect(result.sourceDirs).toEqual(['./src', './lib']);
   });
 
   it('sets depth to direct', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', 'direct', '', '', '', '', '']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', 'direct', '', '', '', '', '', '', '', '']));
     expect(result.depth).toBe('direct');
   });
 
   it('parses shared packages', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', 'react,mobx', '', '', '', '']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', 'react,mobx', '', '', '', '', '', '', '']));
     expect(result.sharedConfig).toEqual({ react: {}, mobx: {} });
   });
 
   it('sets tsconfig path', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', './tsconfig.json', '', '', '']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', './tsconfig.json', '', '', '', '', '', '']));
     expect(result.tsconfigPath).toBe('./tsconfig.json');
   });
 
   it('parses workspace packages', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '@org/a,@org/b', '', '']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '@org/a,@org/b', '', '', '', '', '']));
     expect(result.workspacePackages).toEqual(['@org/a', '@org/b']);
   });
 
   it('sets fail-on', async () => {
-    const resultMismatch = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', 'mismatch', '']));
+    const resultMismatch = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '', 'mismatch', '', '', '']));
     expect(resultMismatch.failOn).toBe('mismatch');
 
-    const resultAny = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', 'any', '']));
+    const resultAny = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '', 'any', '', '', '']));
     expect(resultAny.failOn).toBe('any');
   });
 
   it('ignores unknown fail-on values', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', 'invalid', '']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '', 'invalid', '', '', '']));
     expect(result.failOn).toBeUndefined();
   });
 
   it('sets writeManifest to true on y', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', 'y']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '', '', '', '', 'y']));
     expect(result.writeManifest).toBe(true);
   });
 
   it('asks for output dir when writeManifest is y', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', 'y', './dist']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '', '', '', '', 'y', './dist']));
     expect(result.writeManifest).toBe(true);
     expect(result.outputDir).toBe('./dist');
   });
 
   it('keeps default output dir when writeManifest answer is y but dir is empty', async () => {
-    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', 'y', '']));
+    const result = await runInteractive(makeArgs(), () => {}, makePrompt(['', '', '', '', '', '', '', '', '', '', 'y', '']));
     expect(result.outputDir).toBe('.');
   });
 
   it('prints header message', async () => {
     const chunks: string[] = [];
-    await runInteractive(makeArgs(), (s) => chunks.push(s), makePrompt(['', '', '', '', '', '', '']));
+    await runInteractive(makeArgs(), (s) => chunks.push(s), makePrompt(['', '', '', '', '', '', '', '', '', '', '']));
     expect(chunks.join('')).toContain('[MfSharedInspector] Interactive setup');
   });
 });
