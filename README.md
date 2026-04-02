@@ -30,7 +30,7 @@ npm install @mf-toolkit/shared-inspector --save-dev
 - 🔌 **Webpack plugin** — extracts `shared` config at build time, optionally fails the build
 - 📋 **JSON output** — machine-readable report for CI/CD integration
 
-![Federation mode: detects version conflicts across microfrontends before they reach runtime](./packages/shared-inspector/assets/feature.png)
+![shared-inspector: catches shared config errors at build time before they reach production](./packages/shared-inspector/assets/feature.jpeg)
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
 
