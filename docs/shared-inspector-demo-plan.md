@@ -36,7 +36,8 @@ changes applied on top.
 mf-storefront-demo/
 ├── package.json                  # workspace root (npm workspaces or pnpm)
 ├── scripts/
-│   └── inspect-all.sh            # convenience script: run inspector on all apps + federation
+│   ├── inspect-all.sh            # convenience script: run inspector on all apps + federation
+│   └── federation-gate.ts        # programmatic API example: score gate for CI
 ├── shell/
 │   ├── package.json
 │   ├── webpack.config.js         # ModuleFederationPlugin config
@@ -64,7 +65,8 @@ mf-storefront-demo/
 │   │   ├── filters/
 │   │   │   └── PriceFilter.tsx
 │   │   └── utils/
-│   │       └── format.ts         # uses lodash
+│   │       ├── format.ts         # uses lodash directly
+│   │       └── index.ts          # barrel re-export — key for depth demo
 │   └── project-manifest.json
 ├── checkout/
 │   ├── package.json
