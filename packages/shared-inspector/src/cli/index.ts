@@ -71,5 +71,9 @@ export async function main(
     rl?.close();
   }
 
+  if (args.command === 'federation') {
+    return runFederation(args, write);
+  }
+
   return runProject(args, write);
 }
