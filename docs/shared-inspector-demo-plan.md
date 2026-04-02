@@ -111,14 +111,15 @@ in each scenario.
 - `lodash` appears as a share candidate in the inspector output, but the developer
   consciously accepts this (LOW severity, easy to dismiss).
 
-### Drift state (Scenario 2) — changes applied to `catalog` only
+### Drift state (Scenario 2) — catalog drift + checkout eager risk
 
-| Package | catalog declared version | actual installed | issue |
+| App | Package | Issue | Category |
 |---|---|---|---|
-| `react` | `^17.0.2` | `18.3.1` | version mismatch (HIGH) |
-| `react-dom` | `^17.0.2` | `18.3.1` | version mismatch (HIGH) |
-| `zustand` | yes, no singleton | — | singleton risk (MEDIUM) |
-| `date-fns` | yes, 0 imports | — | unused shared (LOW) |
+| `catalog` | `react` | declared `^17.0.2`, installed `18.3.1` | mismatch (HIGH) |
+| `catalog` | `react-dom` | declared `^17.0.2`, installed `18.3.1` | mismatch (HIGH) |
+| `catalog` | `zustand` | declared without `singleton: true` | singletonRisk (MEDIUM) |
+| `catalog` | `date-fns` | declared, 0 imports | unused (LOW) |
+| `checkout` | `react-router-dom` | `eager: true` without `singleton: true` | eagerRisk (MEDIUM) |
 
 ### Federation issues (Scenario 3) — cross-MF config divergence
 
@@ -328,6 +329,15 @@ The inspector catches all three classes of problem in a single run against `cata
    - `date-fns` must be present in `catalog/package.json` dependencies so version
      resolution can run
 
+4. **Eager risk — `react-router-dom` in `checkout` (MEDIUM, -8)**
+   - In `checkout/shared-config.json`: change `react-router-dom` to
+     `{ "eager": true, "requiredVersion": "^6.22.3" }` — remove `singleton: true`
+   - `eager: true` without `singleton: true` means the package is loaded immediately at
+     startup but not guaranteed to be a single instance; if another MF also loads it
+     eagerly, two separate router instances can exist
+   - This is independent of the catalog drift — demonstrates that per-app issues can
+     exist in multiple MFs simultaneously, each caught by the inspector separately
+
 ### catalog/shared-config.json (drift state)
 
 ```json
@@ -352,6 +362,17 @@ The inspector catches all three classes of problem in a single run against `cata
     "zustand": "4.5.2",
     "date-fns": "3.6.0"
   }
+}
+```
+
+### checkout/shared-config.json (drift state)
+
+```json
+{
+  "react":            { "singleton": true, "requiredVersion": "^18.3.1" },
+  "react-dom":        { "singleton": true, "requiredVersion": "^18.3.1" },
+  "react-router-dom": { "eager": true, "requiredVersion": "^6.22.3" },
+  "zustand":          { "singleton": true, "requiredVersion": "^4.5.2" }
 }
 ```
 
@@ -589,10 +610,36 @@ Issues:
 Total: 5 shared, 3 used, 2 unused, 1 candidates, 2 mismatch, 0 eager risks
 ```
 
-> **Demo note:** Shell and checkout remain at 100/100. The presenter runs the inspector
-> against each app in sequence to show drift is isolated — then explains this is the
-> danger: it only appears if you run the tool. Without the tool, this would reach
-> production and cause "Invalid hook call" at runtime.
+#### checkout (per-app analysis, drift state)
+
+```
+[MfSharedInspector] mf-storefront-checkout (depth: local-graph, 11 files scanned)
+────────────────────────────────────────────────────────────
+
+⚡ Eager Risk — react-router-dom
+   eager: true is set but singleton: true is missing
+   → Risk: Package loaded at startup but not guaranteed single instance —
+     multiple MFs loading eagerly may each get a separate router
+   💡 Fix:
+   shared: {
+     react-router-dom: { singleton: true, eager: true, requiredVersion: "^6.22.3" }
+   }
+
+────────────────────────────────────────────────────────────
+Score: 92/100  ✅ HEALTHY
+
+Issues:
+  🔴  0 high    — version mismatch
+  🟠  1 medium  — singleton gaps, duplicate libs
+  🟡  0 low     — over-sharing
+
+Total: 4 shared, 4 used, 0 unused, 0 candidates, 0 mismatch, 1 eager risks
+```
+
+> **Demo note:** `shell` stays at 100/100. `catalog` is CRITICAL (38/100), `checkout` is
+> HEALTHY but has a subtle eager risk (92/100). Running the inspector against each app
+> separately reveals that drift is not always in one place — two teams can have
+> independent issues simultaneously.
 
 ---
 
