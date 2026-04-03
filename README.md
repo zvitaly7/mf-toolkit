@@ -75,6 +75,8 @@ new MfSpriteWebpackPlugin({
 
 > **Zero analyzer dependencies by default.** Regex-based parsing keeps install at **17 KB**. Need full AST accuracy? Opt into `parser: 'typescript'` or `parser: 'babel'` — loaded dynamically, zero cost if unused.
 
+> **Note:** This plugin is relevant if your shared package previously assembled all icons into a single SVG sprite. If icons are already React/Vue components, tree-shaking handles this automatically.
+
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/sprite-plugin)
 
 ---
