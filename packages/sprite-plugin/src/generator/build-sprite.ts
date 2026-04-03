@@ -7,6 +7,13 @@ interface SvgSymbol {
   content: string;
 }
 
+export interface IconSize {
+  /** Byte size of the SVG file before optimization */
+  originalBytes: number;
+  /** Byte size of the <symbol> element after SVGO optimization */
+  sizeBytes: number;
+}
+
 /**
  * Extracts the inner content and viewBox from an SVG string,
  * wrapping it as a <symbol> element.
@@ -96,11 +103,12 @@ export async function buildSprite(
   iconsDir: string,
   iconNames: string[],
   verbose = false,
-): Promise<{ svg: string; included: string[]; missing: string[] }> {
+): Promise<{ svg: string; included: string[]; missing: string[]; sizes: Map<string, IconSize> }> {
   // Deduplicate requested names
   const requestedNames = [...new Set(iconNames)];
   const included: string[] = [];
   const missing: string[] = [];
+  const sizes = new Map<string, IconSize>();
 
   // Read all SVG files from iconsDir
   let allFiles: string[];
@@ -169,9 +177,15 @@ export async function buildSprite(
     seen.add(matchedId);
 
     const raw = await readFile(filePath, 'utf-8');
+    const originalBytes = Buffer.byteLength(raw, 'utf-8');
     const optimized = optimizeSvg(raw);
-    symbols.push(svgToSymbol(matchedId, optimized));
+    const symbol = svgToSymbol(matchedId, optimized);
+    symbols.push(symbol);
     included.push(matchedId);
+    sizes.set(matchedId, {
+      originalBytes,
+      sizeBytes: Buffer.byteLength(symbol.content, 'utf-8'),
+    });
   }
 
   if (verbose) {
@@ -184,5 +198,5 @@ export async function buildSprite(
     '</svg>',
   ].join('\n');
 
-  return { svg, included, missing };
+  return { svg, included, missing, sizes };
 }
