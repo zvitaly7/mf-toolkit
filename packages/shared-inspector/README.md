@@ -167,6 +167,12 @@ Every report ends with a score out of 100:
 | 40–69 | 🟠 RISKY |
 | 0–39 | 🔴 CRITICAL |
 
+## Demo
+
+See the tool in action across four real-world scenarios — healthy baseline, config drift, hidden federation conflicts, and critical misconfiguration — in a fully runnable e-commerce microfrontend:
+
+**[zvitaly7/mf-storefront-demo](https://github.com/zvitaly7/mf-storefront-demo)** — three independent React 18 apps (shell, catalog, checkout) with Module Federation, demonstrating how `shared-inspector` catches issues that static review and bundle analyzers miss.
+
 ## Advanced: CI integration
 
 Integrate into build pipelines to fail on findings, gate on score, or emit manifests for later federation analysis.

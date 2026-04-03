@@ -33,6 +33,7 @@ npm install @mf-toolkit/shared-inspector --save-dev
 - 📋 **JSON output** — machine-readable report for CI/CD integration
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/shared-inspector)
+[![🛍️ Live demo repository →](https://img.shields.io/badge/🛍️_Live_demo_repository_→-1a1a2e?style=for-the-badge)](https://github.com/zvitaly7/mf-storefront-demo)
 
 ---
 
