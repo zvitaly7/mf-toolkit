@@ -36,6 +36,16 @@ describe('mfSpriteVitePlugin', () => {
     expect(content).toContain('<symbol');
   });
 
+  it('includes only icons actually imported in sourceDirs', async () => {
+    const plugin = mfSpriteVitePlugin(BASE_OPTIONS);
+    await plugin.buildStart.call(pluginContext);
+
+    const content = await readFile(OUTPUT_FILE, 'utf-8');
+    expect(content).toContain('"cart"');
+    expect(content).toContain('"search"');
+    expect(content).not.toContain('"star"'); // star.svg exists but is not imported in app.tsx
+  });
+
   it('regenerates sprite on handleHotUpdate for iconsDir file', async () => {
     const plugin = mfSpriteVitePlugin(BASE_OPTIONS);
     await plugin.buildStart.call(pluginContext);
