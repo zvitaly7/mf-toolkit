@@ -57,13 +57,28 @@ npm install @mf-toolkit/sprite-plugin --save-dev
 
 ```js
 // vite.config.js
-mfSpriteVitePlugin({ iconsDir: './node_modules/@company/ui-kit/icons', sourceDirs: ['./src'], importPattern: /@my-ui\/icons\/(.+)/, output: './src/generated/sprite.ts' })
+mfSpriteVitePlugin({
+  iconsDir: './node_modules/@company/ui-kit/icons',
+  sourceDirs: ['./src'],
+  importPattern: /@my-ui\/icons\/(.+)/,
+  output: './src/generated/sprite.ts',
+})
 
 // rollup.config.js
-mfSpriteRollupPlugin({ iconsDir: './node_modules/@company/ui-kit/icons', sourceDirs: ['./src'], importPattern: /@my-ui\/icons\/(.+)/, output: './src/generated/sprite.ts' })
+mfSpriteRollupPlugin({
+  iconsDir: './node_modules/@company/ui-kit/icons',
+  sourceDirs: ['./src'],
+  importPattern: /@my-ui\/icons\/(.+)/,
+  output: './src/generated/sprite.ts',
+})
 
 // webpack.config.js
-new MfSpriteWebpackPlugin({ iconsDir: './node_modules/@company/ui-kit/icons', sourceDirs: ['./src'], importPattern: /@my-ui\/icons\/(.+)/, output: './src/generated/sprite.ts' })
+new MfSpriteWebpackPlugin({
+  iconsDir: './node_modules/@company/ui-kit/icons',
+  sourceDirs: ['./src'],
+  importPattern: /@my-ui\/icons\/(.+)/,
+  output: './src/generated/sprite.ts',
+})
 ```
 
 **What it does:**
