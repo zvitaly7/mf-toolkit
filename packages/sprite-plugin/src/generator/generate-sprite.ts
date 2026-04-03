@@ -8,7 +8,16 @@ export interface SpriteManifest {
   generatedAt: string;
   iconsCount: number;
   missingCount: number;
-  icons: { name: string; sources: string[] }[];
+  /** Total byte size of all <symbol> elements after optimization */
+  totalSizeBytes: number;
+  icons: {
+    name: string;
+    sources: string[];
+    /** Byte size of the original SVG file */
+    originalBytes: number;
+    /** Byte size of the <symbol> element after SVGO optimization */
+    sizeBytes: number;
+  }[];
   missing: string[];
 }
 
@@ -56,7 +65,7 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
   }
 
   // Step 2: Build the sprite from matched SVG files
-  const { svg, included, missing } = await buildSprite(iconsDir, iconNames, verbose);
+  const { svg, included, missing, sizes } = await buildSprite(iconsDir, iconNames, verbose);
 
   if (missing.length > 0) {
     console.warn(`[sprite] Missing icons: ${missing.join(', ')}`);
@@ -70,20 +79,28 @@ export async function generateSprite(options: SpritePluginOptions): Promise<void
 
   // Step 4: Write manifest JSON (optional, next to the sprite file)
   if (writeManifest) {
+    const totalSizeBytes = included.reduce((sum, name) => sum + (sizes.get(name)?.sizeBytes ?? 0), 0);
+
     const manifest: SpriteManifest = {
       generatedAt: new Date().toISOString(),
       iconsCount: included.length,
       missingCount: missing.length,
-      icons: included.map((name) => ({
-        name,
-        sources: usages
-          .filter((u) => {
-            const uLower = u.name.toLowerCase();
-            const nLower = name.toLowerCase();
-            return uLower === nLower || uLower.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() === nLower;
-          })
-          .map((u) => `${u.source}:${u.line}`),
-      })),
+      totalSizeBytes,
+      icons: included.map((name) => {
+        const size = sizes.get(name);
+        return {
+          name,
+          sources: usages
+            .filter((u) => {
+              const uLower = u.name.toLowerCase();
+              const nLower = name.toLowerCase();
+              return uLower === nLower || uLower.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() === nLower;
+            })
+            .map((u) => `${u.source}:${u.line}`),
+          originalBytes: size?.originalBytes ?? 0,
+          sizeBytes: size?.sizeBytes ?? 0,
+        };
+      }),
       missing,
     };
 
