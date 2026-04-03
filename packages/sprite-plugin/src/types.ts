@@ -80,6 +80,25 @@ export interface SpritePluginOptions {
    * @default 'regex'
    */
   parser?: ParserStrategy;
+
+  /**
+   * Custom SVGO options applied during icon optimization.
+   * Extra plugins are appended after the built-in defaults
+   * (preset-default, removeDimensions, removeXMLNS).
+   *
+   * @example
+   * // Add a custom plugin
+   * svgoOptions: { plugins: [{ name: 'removeTitle' }] }
+   *
+   * // Disable multipass for faster builds
+   * svgoOptions: { multipass: false }
+   */
+  svgoOptions?: {
+    /** Extra SVGO plugins appended after the built-in defaults */
+    plugins?: import('svgo').PluginConfig[];
+    /** Run SVGO multiple passes until no further changes (default: true) */
+    multipass?: boolean;
+  };
 }
 
 export interface AnalyzerOptions {
