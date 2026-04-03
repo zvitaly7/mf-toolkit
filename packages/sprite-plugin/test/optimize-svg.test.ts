@@ -50,4 +50,18 @@ describe('optimizeSvg', () => {
     const result = optimizeSvg(icon('fill="#000000"'), false);
     expect(result).not.toContain('currentColor');
   });
+
+  it('appends extra plugins from svgoOptions', () => {
+    // removeTitle is a valid SVGO plugin — with it the title element should be removed
+    const withTitle = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Cart</title><path fill="#000" d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`;
+    const result = optimizeSvg(withTitle, true, { plugins: ['removeTitle'] });
+    expect(result).not.toContain('<title>');
+  });
+
+  it('respects multipass: false from svgoOptions', () => {
+    // Just verifies the option is accepted and optimization still runs
+    const result = optimizeSvg(icon('fill="#000"'), true, { multipass: false });
+    expect(result).toContain('currentColor');
+    expect(result).toContain('viewBox');
+  });
 });

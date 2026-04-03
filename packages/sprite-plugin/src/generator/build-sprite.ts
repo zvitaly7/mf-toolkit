@@ -1,6 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, basename, extname } from 'node:path';
-import { optimizeSvg } from './optimize-svg.js';
+import { optimizeSvg, type SvgoOptions } from './optimize-svg.js';
 
 interface SvgSymbol {
   id: string;
@@ -103,6 +103,7 @@ export async function buildSprite(
   iconsDir: string,
   iconNames: string[],
   verbose = false,
+  svgoOptions?: SvgoOptions,
 ): Promise<{ svg: string; included: string[]; missing: string[]; sizes: Map<string, IconSize> }> {
   // Deduplicate requested names
   const requestedNames = [...new Set(iconNames)];
@@ -178,7 +179,7 @@ export async function buildSprite(
 
     const raw = await readFile(filePath, 'utf-8');
     const originalBytes = Buffer.byteLength(raw, 'utf-8');
-    const optimized = optimizeSvg(raw);
+    const optimized = optimizeSvg(raw, true, svgoOptions);
     const symbol = svgToSymbol(matchedId, optimized);
     symbols.push(symbol);
     included.push(matchedId);

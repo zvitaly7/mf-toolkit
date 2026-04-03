@@ -1,4 +1,4 @@
-import { optimize } from 'svgo';
+import { optimize, type PluginConfig } from 'svgo';
 
 /** Literal color strings to replace with currentColor */
 const COLOR_LITERALS = ['#000000', '#000', 'black'];
@@ -21,7 +21,12 @@ const COLOR_PATTERNS = [
  *   .cls{fill:#000000}   → .cls{fill:currentColor}
  *   fill="rgb(0,0,0)"    → fill="currentColor"
  */
-export function optimizeSvg(raw: string, replaceColors = true): string {
+export interface SvgoOptions {
+  plugins?: PluginConfig[];
+  multipass?: boolean;
+}
+
+export function optimizeSvg(raw: string, replaceColors = true, svgoOptions?: SvgoOptions): string {
   // Replace colors BEFORE SVGO — otherwise SVGO removes default black
   // fills as redundant, and we lose the chance to set currentColor
   let svg = raw;
@@ -35,13 +40,11 @@ export function optimizeSvg(raw: string, replaceColors = true): string {
     }
   }
 
+  const defaultPlugins: PluginConfig[] = ['preset-default', 'removeDimensions', 'removeXMLNS'];
+
   const result = optimize(svg, {
-    multipass: true,
-    plugins: [
-      'preset-default',
-      'removeDimensions',
-      'removeXMLNS',
-    ],
+    multipass: svgoOptions?.multipass ?? true,
+    plugins: svgoOptions?.plugins ? [...defaultPlugins, ...svgoOptions.plugins] : defaultPlugins,
   });
 
   return result.data;
