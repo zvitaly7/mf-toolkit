@@ -15,6 +15,14 @@
     "./webpack": {
       "types": "./dist/plugins/webpack.d.ts",
       "default": "./dist/plugins/webpack.js"
+    },
+    "./rollup": {
+      "types": "./dist/plugins/rollup.d.ts",
+      "default": "./dist/plugins/rollup.js"
+    },
+    "./vite": {
+      "types": "./dist/plugins/vite.d.ts",
+      "default": "./dist/plugins/vite.js"
     }
   },
   "files": [
@@ -33,6 +41,8 @@
     "svg",
     "sprite",
     "webpack",
+    "vite",
+    "rollup",
     "icons",
     "optimization"
   ],
@@ -46,11 +56,15 @@
   },
   "peerDependencies": {
     "typescript": ">=4.7",
-    "@babel/parser": ">=7.20"
+    "@babel/parser": ">=7.20",
+    "rollup": ">=3",
+    "vite": ">=4"
   },
   "peerDependenciesMeta": {
     "typescript": { "optional": true },
-    "@babel/parser": { "optional": true }
+    "@babel/parser": { "optional": true },
+    "rollup": { "optional": true },
+    "vite": { "optional": true }
   },
   "devDependencies": {
     "@babel/parser": "^7.20.0",

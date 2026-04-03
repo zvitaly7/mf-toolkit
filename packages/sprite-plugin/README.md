@@ -62,6 +62,42 @@ npm install @mf-toolkit/sprite-plugin --save-dev
 
 ## Quick Start
 
+### With Vite
+
+```js
+// vite.config.js
+import { mfSpriteVitePlugin } from '@mf-toolkit/sprite-plugin/vite';
+
+export default {
+  plugins: [
+    mfSpriteVitePlugin({
+      iconsDir: './src/assets/icons',
+      sourceDirs: ['./src'],
+      importPattern: /@my-ui\/icons\/(.+)/,
+      output: './src/generated/sprite.ts',
+    }),
+  ],
+};
+```
+
+### With Rollup
+
+```js
+// rollup.config.js
+import { mfSpriteRollupPlugin } from '@mf-toolkit/sprite-plugin/rollup';
+
+export default {
+  plugins: [
+    mfSpriteRollupPlugin({
+      iconsDir: './src/assets/icons',
+      sourceDirs: ['./src'],
+      importPattern: /@my-ui\/icons\/(.+)/,
+      output: './src/generated/sprite.ts',
+    }),
+  ],
+};
+```
+
 ### With Webpack
 
 ```js
