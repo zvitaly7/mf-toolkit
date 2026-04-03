@@ -1,9 +1,15 @@
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { SpritePluginOptions } from '../types.js';
 import { generateSprite } from '../generator/generate-sprite.js';
 
+interface PluginContext {
+  addWatchFile(id: string): void;
+}
+
 interface RollupPlugin {
   name: string;
-  buildStart(): Promise<void>;
+  buildStart(this: PluginContext): Promise<void>;
   watchChange(id: string): Promise<void>;
 }
 
@@ -42,7 +48,21 @@ export function mfSpriteRollupPlugin(options: SpritePluginOptions): RollupPlugin
   return {
     name: PLUGIN_NAME,
 
-    async buildStart() {
+    async buildStart(this: PluginContext) {
+      // Register SVG files with Rollup's watcher so watchChange fires when they change.
+      // Without this, Rollup only watches files in the module graph — SVG files read
+      // directly via fs.readFile would never trigger a rebuild.
+      try {
+        const entries = await readdir(options.iconsDir, { recursive: true });
+        for (const entry of entries) {
+          if (typeof entry === 'string' && entry.endsWith('.svg')) {
+            this.addWatchFile(join(options.iconsDir, entry));
+          }
+        }
+      } catch {
+        // iconsDir may not exist yet on first run — ignore
+      }
+
       await run();
     },
 
