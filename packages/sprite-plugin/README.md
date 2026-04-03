@@ -71,6 +71,8 @@ import { mfSpriteVitePlugin } from '@mf-toolkit/sprite-plugin/vite';
 export default {
   plugins: [
     mfSpriteVitePlugin({
+      // Path to SVG source files — local folder or an installed package:
+      // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
       iconsDir: './src/assets/icons',
       sourceDirs: ['./src'],
       importPattern: /@my-ui\/icons\/(.+)/,
@@ -89,6 +91,8 @@ import { mfSpriteRollupPlugin } from '@mf-toolkit/sprite-plugin/rollup';
 export default {
   plugins: [
     mfSpriteRollupPlugin({
+      // Path to SVG source files — local folder or an installed package:
+      // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
       iconsDir: './src/assets/icons',
       sourceDirs: ['./src'],
       importPattern: /@my-ui\/icons\/(.+)/,
@@ -107,6 +111,8 @@ const { MfSpriteWebpackPlugin } = require('@mf-toolkit/sprite-plugin/webpack');
 module.exports = {
   plugins: [
     new MfSpriteWebpackPlugin({
+      // Path to SVG source files — local folder or an installed package:
+      // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
       iconsDir: './src/assets/icons',
       sourceDirs: ['./src'],
       importPattern: /@my-ui\/icons\/(.+)/,
@@ -123,6 +129,8 @@ module.exports = {
 import { generateSprite } from '@mf-toolkit/sprite-plugin';
 
 await generateSprite({
+  // Path to SVG source files — local folder or an installed package:
+  // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
   iconsDir: './src/assets/icons',
   sourceDirs: ['./src'],
   importPattern: /@my-ui\/icons\/(.+)/,
