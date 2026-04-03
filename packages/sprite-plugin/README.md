@@ -28,7 +28,7 @@ Manually maintaining per-app icon lists is error-prone and doesn't scale.
 
 This plugin is the right tool if **all three** of the following are true:
 
-1. **You have a shared UI kit that ships a single SVG sprite** — all icons bundled into one file, loaded by every app
+1. **You have a shared package that ships a single SVG sprite** — all icons bundled into one file, loaded by every app
 2. **You are migrating from a monolith to microfrontends**, or already have multiple MFEs each loading that full sprite
 3. **The kit's SVG source files are accessible on disk** — either:
    - The kit is in the same monorepo: `../../ui-kit/icons/`
