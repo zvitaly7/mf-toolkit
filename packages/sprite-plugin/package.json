@@ -1,6 +1,6 @@
 {
   "name": "@mf-toolkit/sprite-plugin",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "SVG sprite generator that statically analyzes your code and builds optimized sprites containing only the icons your microfrontend actually uses.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
