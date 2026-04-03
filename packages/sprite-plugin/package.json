@@ -6,6 +6,7 @@
   "license": "MIT",
   "homepage": "https://github.com/zvitaly7/mf-toolkit/tree/main/packages/sprite-plugin",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
