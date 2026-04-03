@@ -47,7 +47,7 @@ npm install @mf-toolkit/shared-inspector --save-dev
 
 **Your design system has 500 icons. Your microfrontend uses 12. Why ship all of them?**
 
-A webpack plugin (and standalone tool) that statically analyzes your source code, detects which SVG icons are actually imported, and generates an optimized sprite containing only those icons. Like tree-shaking, but for SVG sprites.
+A build plugin (Vite, Rollup, Webpack) and standalone tool that statically analyzes your source code, detects which SVG icons are actually imported, and generates an optimized sprite containing only those icons. Like tree-shaking, but for SVG sprites.
 
 ⚡ **88% bundle reduction** tested on a production app — 319 icons in design system → 38 actually used
 
@@ -56,13 +56,14 @@ npm install @mf-toolkit/sprite-plugin --save-dev
 ```
 
 ```js
-// webpack.config.js — 4 lines to optimize your icon bundle
-new MfSpriteWebpackPlugin({
-  iconsDir: './src/assets/icons',
-  sourceDirs: ['./src'],
-  importPattern: /@my-ui\/icons\/(.+)/,
-  output: './src/generated/sprite.ts',
-});
+// vite.config.js
+mfSpriteVitePlugin({ iconsDir: './node_modules/@company/ui-kit/icons', sourceDirs: ['./src'], importPattern: /@my-ui\/icons\/(.+)/, output: './src/generated/sprite.ts' })
+
+// rollup.config.js
+mfSpriteRollupPlugin({ iconsDir: './node_modules/@company/ui-kit/icons', sourceDirs: ['./src'], importPattern: /@my-ui\/icons\/(.+)/, output: './src/generated/sprite.ts' })
+
+// webpack.config.js
+new MfSpriteWebpackPlugin({ iconsDir: './node_modules/@company/ui-kit/icons', sourceDirs: ['./src'], importPattern: /@my-ui\/icons\/(.+)/, output: './src/generated/sprite.ts' })
 ```
 
 **What it does:**
