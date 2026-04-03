@@ -15,6 +15,8 @@ const BASE_OPTIONS = {
   extensions: ['.tsx'],
 };
 
+const pluginContext = { addWatchFile(_id: string) {} };
+
 afterEach(async () => {
   await rm(OUTPUT_DIR, { recursive: true, force: true });
 });
@@ -27,7 +29,7 @@ describe('mfSpriteVitePlugin', () => {
 
   it('generates sprite on buildStart', async () => {
     const plugin = mfSpriteVitePlugin(BASE_OPTIONS);
-    await plugin.buildStart();
+    await plugin.buildStart.call(pluginContext);
 
     const content = await readFile(OUTPUT_FILE, 'utf-8');
     expect(content).toContain('injectSprite');
@@ -36,7 +38,7 @@ describe('mfSpriteVitePlugin', () => {
 
   it('regenerates sprite on handleHotUpdate for iconsDir file', async () => {
     const plugin = mfSpriteVitePlugin(BASE_OPTIONS);
-    await plugin.buildStart();
+    await plugin.buildStart.call(pluginContext);
 
     await plugin.handleHotUpdate({ file: join(FIXTURES, 'icons/cart.svg') });
     const content = await readFile(OUTPUT_FILE, 'utf-8');
@@ -45,7 +47,7 @@ describe('mfSpriteVitePlugin', () => {
 
   it('does not regenerate on unrelated file in handleHotUpdate', async () => {
     const plugin = mfSpriteVitePlugin(BASE_OPTIONS);
-    await plugin.buildStart();
+    await plugin.buildStart.call(pluginContext);
 
     const before = await readFile(OUTPUT_FILE, 'utf-8');
     await plugin.handleHotUpdate({ file: '/some/unrelated/file.ts' });

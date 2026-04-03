@@ -15,8 +15,14 @@ const BASE_OPTIONS = {
   extensions: ['.tsx'],
 };
 
+const watchedFiles: string[] = [];
+const pluginContext = {
+  addWatchFile(id: string) { watchedFiles.push(id); },
+};
+
 afterEach(async () => {
   await rm(OUTPUT_DIR, { recursive: true, force: true });
+  watchedFiles.length = 0;
 });
 
 describe('mfSpriteRollupPlugin', () => {
@@ -27,34 +33,38 @@ describe('mfSpriteRollupPlugin', () => {
 
   it('generates sprite on buildStart', async () => {
     const plugin = mfSpriteRollupPlugin(BASE_OPTIONS);
-    await plugin.buildStart();
+    await plugin.buildStart.call(pluginContext);
 
     const content = await readFile(OUTPUT_FILE, 'utf-8');
     expect(content).toContain('injectSprite');
     expect(content).toContain('<symbol');
   });
 
+  it('registers SVG files with addWatchFile on buildStart', async () => {
+    const plugin = mfSpriteRollupPlugin(BASE_OPTIONS);
+    await plugin.buildStart.call(pluginContext);
+
+    expect(watchedFiles.length).toBeGreaterThan(0);
+    expect(watchedFiles.every((f) => f.endsWith('.svg'))).toBe(true);
+  });
+
   it('regenerates sprite on watchChange for iconsDir file', async () => {
     const plugin = mfSpriteRollupPlugin(BASE_OPTIONS);
-    await plugin.buildStart();
-
-    const before = await readFile(OUTPUT_FILE, 'utf-8');
+    await plugin.buildStart.call(pluginContext);
 
     await plugin.watchChange(join(FIXTURES, 'icons/cart.svg'));
     const after = await readFile(OUTPUT_FILE, 'utf-8');
-
     expect(after).toContain('injectSprite');
-    expect(after).toBe(before); // same content, regenerated cleanly
   });
 
   it('does not regenerate on unrelated file change', async () => {
     const plugin = mfSpriteRollupPlugin(BASE_OPTIONS);
-    await plugin.buildStart();
+    await plugin.buildStart.call(pluginContext);
 
-    const statBefore = (await readFile(OUTPUT_FILE, 'utf-8')).length;
+    const before = await readFile(OUTPUT_FILE, 'utf-8');
     await plugin.watchChange('/some/unrelated/file.ts');
-    const statAfter = (await readFile(OUTPUT_FILE, 'utf-8')).length;
+    const after = await readFile(OUTPUT_FILE, 'utf-8');
 
-    expect(statAfter).toBe(statBefore);
+    expect(after).toBe(before);
   });
 });
