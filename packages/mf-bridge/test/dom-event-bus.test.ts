@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
 import { DOMEventBus } from '../src/dom-event-bus.js'
 
