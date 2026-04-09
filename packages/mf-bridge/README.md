@@ -423,6 +423,132 @@ const off = bus.on<{ page: string }>('navigateTo', ({ page }) => {
 
 ---
 
+## Production and polyrepo setup
+
+### Separation of concerns
+
+`mf-bridge` handles **mounting**: it receives a `register` function and manages the full React lifecycle — `createRoot`, prop streaming, cleanup.
+
+It deliberately does **not** handle how remotes are located or loaded. That separation keeps the bridge compatible with any Module Federation setup: static webpack remotes, dynamic URL resolution, runtime federation, or a custom loader.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Where is remoteEntry.js?  → webpack config / mf-loader      │
+│  Has this remote been loaded before? → mf-loader registry    │
+│  Type-safe importRemote?   → mf-loader                       │
+├──────────────────────────────────────────────────────────────┤
+│  Mount register() into DOM → mf-bridge  ✓                    │
+│  Stream prop updates       → mf-bridge  ✓                    │
+│  Show fallback while loading → mf-bridge  ✓                  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### How `import('checkout/entry')` works at runtime
+
+The dynamic import inside the `register` factory is not a regular import — webpack intercepts it. When the host's `ModuleFederationPlugin` declares a remote:
+
+```js
+remotes: { checkout: 'checkout@https://cdn.example.com/remoteEntry.js' }
+```
+
+webpack records that mapping at build time. At runtime, the first `import('checkout/entry')` triggers:
+
+1. Inject `<script src="https://cdn.example.com/remoteEntry.js">` into the page.
+2. Initialize the `checkout` scope (shared dependency negotiation).
+3. Fetch and evaluate the chunk containing the `./entry` module.
+4. Resolve the promise with `{ register, … }`.
+
+By the time `MFBridgeLazy` receives the resolved `register` function, all of that is already done. The bridge only sees the result.
+
+### Static remotes (monorepo or fixed URLs)
+
+The simplest production setup: each remote has a stable CDN URL, declared in the host's webpack config.
+
+```js
+// host/webpack.config.js
+new ModuleFederationPlugin({
+  name: 'host',
+  remotes: {
+    checkout: `checkout@${process.env.CHECKOUT_URL ?? 'https://cdn.example.com/checkout/remoteEntry.js'}`,
+    catalog:  `catalog@${process.env.CATALOG_URL  ?? 'https://cdn.example.com/catalog/remoteEntry.js'}`,
+  },
+  shared: { react: { singleton: true }, 'react-dom': { singleton: true } },
+})
+```
+
+The host app is rebuilt (or the env var is updated) whenever a remote ships a new version. `mf-bridge` usage is unchanged:
+
+```tsx
+<MFBridgeLazy
+  register={() => import('checkout/entry').then(m => m.register)}
+  props={{ orderId }}
+  fallback={<Spinner />}
+/>
+```
+
+### Dynamic remotes (URL from experiment/feature flag)
+
+When the remote URL is only known at runtime — from an A/B experiment config, a feature flag service, or a version API — use Module Federation's `loadRemote` to bootstrap the scope before importing:
+
+```tsx
+import { loadRemote } from '@module-federation/enhanced/runtime'
+
+async function getCheckoutRegister() {
+  const url = await featureFlags.get('checkout_remote_url')
+  // Load and initialize the remote scope at runtime
+  await loadRemote({ url, scope: 'checkout' })
+  const m = await import('checkout/entry')
+  return m.register
+}
+
+<MFBridgeLazy
+  register={getCheckoutRegister}
+  props={{ orderId }}
+  fallback={<Spinner />}
+/>
+```
+
+The `register` prop accepts any `() => Promise<RegisterFn>` — the bridge doesn't care how the module is fetched.
+
+### Polyrepo CI/CD flow
+
+Each microfrontend lives in its own repository with its own build and deploy pipeline:
+
+```
+checkout-mf repo ──→ CI build ──→ upload to CDN
+                                  s3://cdn/checkout/{version}/remoteEntry.js
+                                  s3://cdn/checkout/latest/remoteEntry.js
+
+catalog-mf repo  ──→ CI build ──→ upload to CDN
+                                  s3://cdn/catalog/{version}/remoteEntry.js
+
+host repo ────────→ CI build ──→ bundle with CHECKOUT_URL / CATALOG_URL
+                                  (injected from env at build or runtime)
+```
+
+The `register` function exported from `checkout/entry` is just a JavaScript value — versioned and shipped with the remote bundle. `mf-bridge` receives it after Module Federation has done the network work.
+
+### Development with local remotes
+
+Point the host at locally running MF dev servers via env vars:
+
+```bash
+# .env.development (host repo)
+CHECKOUT_URL=http://localhost:3001/remoteEntry.js
+CATALOG_URL=http://localhost:3002/remoteEntry.js
+```
+
+```js
+// host/webpack.config.js
+remotes: {
+  checkout: `checkout@${process.env.CHECKOUT_URL}`,
+}
+```
+
+No changes to `mf-bridge` usage — `import('checkout/entry')` resolves from the local dev server instead of the CDN.
+
+---
+
 ## Full example with Module Federation config
 
 ```tsx
@@ -446,7 +572,7 @@ export const register = createMFEntry(CheckoutWidget)
 new ModuleFederationPlugin({
   name: 'host',
   remotes: {
-    checkout: 'checkout@https://checkout.example.com/remoteEntry.js',
+    checkout: `checkout@${process.env.CHECKOUT_URL ?? 'https://cdn.example.com/checkout/remoteEntry.js'}`,
   },
   shared: { react: { singleton: true }, 'react-dom': { singleton: true } },
 })
