@@ -10,6 +10,46 @@ import type { MFLazyProps, MFProps, RegisterFn } from './types.js'
 
 const DEFAULT_NS = 'mfbridge'
 
+// ─── Internal helpers ────────────────────────────────────────────────────────
+
+function dbg(namespace: string, enabled: boolean, event: string, ...data: unknown[]) {
+  if (enabled) console.debug(`[mf-bridge:${namespace}]`, event, ...data)
+}
+
+// ─── Preload cache ────────────────────────────────────────────────────────────
+
+const preloadCache = new Map<
+  () => Promise<RegisterFn<any>>,
+  Promise<RegisterFn<any>>
+>()
+
+/**
+ * Kicks off loading a remote module before `MFBridgeLazy` renders.
+ * Call it as early as possible (on hover, on route prefetch, on app boot)
+ * to cut down Time-to-Interactive.
+ *
+ * The loader function reference is used as the cache key — keep it stable
+ * (module-level constant or `useCallback`). If `MFBridgeLazy` renders with
+ * the same reference, it reuses the in-flight/resolved promise and skips a
+ * second network request.
+ *
+ * @example
+ * // Prefetch on hover
+ * <button onMouseEnter={() => preloadMF(checkoutLoader)}>
+ *   Open checkout
+ * </button>
+ *
+ * // Later MFBridgeLazy renders and reuses the already-started load
+ * <MFBridgeLazy register={checkoutLoader} props={...} />
+ */
+export function preloadMF<T extends RegisterFn<any>>(
+  loader: () => Promise<T>,
+): void {
+  if (!preloadCache.has(loader)) {
+    preloadCache.set(loader, loader() as Promise<RegisterFn<any>>)
+  }
+}
+
 // ─── Sync bridge ─────────────────────────────────────────────────────────────
 
 export interface MFBridgeProps<T extends RegisterFn<any>> {
@@ -24,6 +64,12 @@ export interface MFBridgeProps<T extends RegisterFn<any>> {
    * Must match the namespace used by `createMFEntry` (defaults to `"mfbridge"`).
    */
   namespace?: string
+  /**
+   * Enable `console.debug` logging for this bridge instance.
+   * Logs mount, propsChanged, and unmount events with the namespace prefix.
+   * Safe to leave in production — gated behind this flag.
+   */
+  debug?: boolean
 }
 
 /**
@@ -46,11 +92,14 @@ export function MFBridge<T extends RegisterFn<any>>({
   props,
   tagName = 'mf-bridge',
   namespace = DEFAULT_NS,
+  debug = false,
 }: MFBridgeProps<T>): React.JSX.Element {
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
   const busRef = useRef<DOMEventBus | null>(null)
   const isFirstRender = useRef(true)
+  const debugRef = useRef(debug)
+  debugRef.current = debug
 
   // Re-run when register or namespace changes: tear down the old remote and
   // mount the new one. isFirstRender is reset so the props-streaming effect
@@ -62,9 +111,12 @@ export function MFBridge<T extends RegisterFn<any>>({
     isFirstRender.current = true
     const bus = new DOMEventBus(el, namespace)
     busRef.current = bus
+
+    dbg(namespace, debugRef.current, 'mount', { props })
     unmountRef.current = register({ mountPointer: el, props, namespace })
 
     return () => {
+      dbg(namespace, debugRef.current, 'unmount')
       busRef.current = null
       unmountRef.current?.()
       unmountRef.current = null
@@ -79,6 +131,7 @@ export function MFBridge<T extends RegisterFn<any>>({
       isFirstRender.current = false
       return
     }
+    dbg(namespace, debugRef.current, 'propsChanged', props)
     busRef.current?.send('propsChanged', props)
   }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -94,6 +147,7 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    *
    * The factory is called again whenever its reference changes, so keep it
    * stable (define outside the component or wrap with `useCallback`).
+   * Pre-warm it with `preloadMF(loader)` to start loading before render.
    */
   register: T
   /** Props forwarded to the remote component. Type is inferred from `register`. */
@@ -114,6 +168,11 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   onError?: (err: unknown) => void
   /** Called once the remote module has loaded and is ready to mount. */
   onLoad?: () => void
+  /**
+   * Enable `console.debug` logging for this bridge instance.
+   * Logs load:start, load:ok, load:error events with the namespace prefix.
+   */
+  debug?: boolean
 }
 
 /**
@@ -124,6 +183,9 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
  *
  * If `register` changes (e.g. switching between remotes) the previous remote
  * is torn down and the new one is loaded from scratch.
+ *
+ * Call `preloadMF(loader)` before rendering to start the load early and
+ * reduce Time-to-Interactive.
  *
  * @example
  * <MFBridgeLazy
@@ -140,6 +202,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   namespace = DEFAULT_NS,
   onError,
   onLoad,
+  debug = false,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
@@ -149,23 +212,37 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   onErrorRef.current = onError
   const onLoadRef = useRef(onLoad)
   onLoadRef.current = onLoad
+  const debugRef = useRef(debug)
+  debugRef.current = debug
 
   // Re-run whenever the factory reference changes: reset to loading state and
-  // fetch the new remote. Cancellation prevents stale resolves from a previous
-  // factory from overwriting state.
+  // fetch the new remote. If preloadMF was called with the same loader, reuse
+  // the in-flight/resolved promise — no second network request.
+  // Cancellation prevents stale resolves from a previous factory from
+  // overwriting state.
   useEffect(() => {
     let cancelled = false
     setRegisterFn(null)
     setFailed(false)
-    register()
+
+    const ns = namespace
+    dbg(ns, debugRef.current, 'load:start')
+
+    const cached = preloadCache.get(register)
+    const promise = cached ?? (register() as Promise<RegisterFn<any>>)
+    if (!cached) preloadCache.set(register, promise)
+
+    promise
       .then((fn) => {
         if (!cancelled) {
+          dbg(ns, debugRef.current, 'load:ok')
           setRegisterFn(() => fn)
           onLoadRef.current?.()
         }
       })
       .catch((err: unknown) => {
         if (cancelled) return
+        dbg(ns, debugRef.current, 'load:error', err)
         setFailed(true)
         onErrorRef.current?.(err)
       })
@@ -181,5 +258,6 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     props,
     tagName,
     namespace,
+    debug,
   })
 }
