@@ -1,7 +1,7 @@
 # `@mf-toolkit/mf-bridge`
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/mf-bridge?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/mf-bridge)
-[![license](https://img.shields.io/npm/l/@mf-toolkit/mf-bridge?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/@mf-toolkit/mf-bridge?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/packages/mf-bridge/LICENSE)
 [![react](https://img.shields.io/badge/react-18%20%7C%2019-61DAFB?logo=react)](https://react.dev)
 
 **Mount a microfrontend React component from any Module Federation remote — with lazy loading, automatic prop streaming, and a typed fallback.**
