@@ -1,10 +1,17 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, basename, extname } from 'node:path';
-import { optimizeSvg } from './optimize-svg.js';
+import { optimizeSvg, type SvgoOptions } from './optimize-svg.js';
 
 interface SvgSymbol {
   id: string;
   content: string;
+}
+
+export interface IconSize {
+  /** Byte size of the SVG file before optimization */
+  originalBytes: number;
+  /** Byte size of the <symbol> element after SVGO optimization */
+  sizeBytes: number;
 }
 
 /**
@@ -96,11 +103,13 @@ export async function buildSprite(
   iconsDir: string,
   iconNames: string[],
   verbose = false,
-): Promise<{ svg: string; included: string[]; missing: string[] }> {
+  svgoOptions?: SvgoOptions,
+): Promise<{ svg: string; included: string[]; missing: string[]; sizes: Map<string, IconSize> }> {
   // Deduplicate requested names
   const requestedNames = [...new Set(iconNames)];
   const included: string[] = [];
   const missing: string[] = [];
+  const sizes = new Map<string, IconSize>();
 
   // Read all SVG files from iconsDir
   let allFiles: string[];
@@ -169,9 +178,15 @@ export async function buildSprite(
     seen.add(matchedId);
 
     const raw = await readFile(filePath, 'utf-8');
-    const optimized = optimizeSvg(raw);
-    symbols.push(svgToSymbol(matchedId, optimized));
+    const originalBytes = Buffer.byteLength(raw, 'utf-8');
+    const optimized = optimizeSvg(raw, true, svgoOptions);
+    const symbol = svgToSymbol(matchedId, optimized);
+    symbols.push(symbol);
     included.push(matchedId);
+    sizes.set(matchedId, {
+      originalBytes,
+      sizeBytes: Buffer.byteLength(symbol.content, 'utf-8'),
+    });
   }
 
   if (verbose) {
@@ -184,5 +199,5 @@ export async function buildSprite(
     '</svg>',
   ].join('\n');
 
-  return { svg, included, missing };
+  return { svg, included, missing, sizes };
 }

@@ -24,6 +24,32 @@ When you split a monolith into microfrontends, each one inherits the full icon s
 
 Manually maintaining per-app icon lists is error-prone and doesn't scale.
 
+## When to Use This Plugin
+
+This plugin is the right tool if **all three** of the following are true:
+
+1. **You have a shared package that ships a single SVG sprite** — all icons bundled into one file, loaded by every app
+2. **You are migrating from a monolith to microfrontends**, or already have multiple MFEs each loading that full sprite
+3. **The kit's SVG source files are accessible on disk** — either:
+   - The kit is in the same monorepo: `../../ui-kit/icons/`
+   - The kit is an npm package that includes raw SVG files: `node_modules/@company/ui-kit/icons/`
+
+```js
+// Both setups work the same way — just point iconsDir at the SVG files:
+
+// Monorepo
+iconsDir: '../../packages/ui-kit/src/icons'
+
+// npm dependency (kit publishes SVGs in its package)
+iconsDir: './node_modules/@company/ui-kit/icons'
+```
+
+## When NOT to Use This Plugin
+
+- **Icons are already React/Vue components** — tree-shaking handles this automatically, no plugin needed
+- **Icons are imported as inline SVG** — same as above, bundler takes care of it
+- **The kit only publishes compiled JS** (no raw SVG files in `node_modules`) — the plugin has nothing to read
+
 ## The Solution
 
 ![How @mf-toolkit/sprite-plugin works](./assets/solution-diagram.svg)
@@ -36,6 +62,46 @@ npm install @mf-toolkit/sprite-plugin --save-dev
 
 ## Quick Start
 
+### With Vite
+
+```js
+// vite.config.js
+import { mfSpriteVitePlugin } from '@mf-toolkit/sprite-plugin/vite';
+
+export default {
+  plugins: [
+    mfSpriteVitePlugin({
+      // Path to SVG source files — local folder or an installed package:
+      // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
+      iconsDir: './src/assets/icons',
+      sourceDirs: ['./src'],
+      importPattern: /@my-ui\/icons\/(.+)/,
+      output: './src/generated/sprite.ts',
+    }),
+  ],
+};
+```
+
+### With Rollup
+
+```js
+// rollup.config.js
+import { mfSpriteRollupPlugin } from '@mf-toolkit/sprite-plugin/rollup';
+
+export default {
+  plugins: [
+    mfSpriteRollupPlugin({
+      // Path to SVG source files — local folder or an installed package:
+      // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
+      iconsDir: './src/assets/icons',
+      sourceDirs: ['./src'],
+      importPattern: /@my-ui\/icons\/(.+)/,
+      output: './src/generated/sprite.ts',
+    }),
+  ],
+};
+```
+
 ### With Webpack
 
 ```js
@@ -45,6 +111,8 @@ const { MfSpriteWebpackPlugin } = require('@mf-toolkit/sprite-plugin/webpack');
 module.exports = {
   plugins: [
     new MfSpriteWebpackPlugin({
+      // Path to SVG source files — local folder or an installed package:
+      // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
       iconsDir: './src/assets/icons',
       sourceDirs: ['./src'],
       importPattern: /@my-ui\/icons\/(.+)/,
@@ -61,6 +129,8 @@ module.exports = {
 import { generateSprite } from '@mf-toolkit/sprite-plugin';
 
 await generateSprite({
+  // Path to SVG source files — local folder or an installed package:
+  // './node_modules/@company/ui-kit/icons' if icons live in a shared kit
   iconsDir: './src/assets/icons',
   sourceDirs: ['./src'],
   importPattern: /@my-ui\/icons\/(.+)/,
@@ -218,6 +288,14 @@ interface SpritePluginOptions {
   // 'typescript' — uses TypeScript Compiler API (requires `typescript`)
   // 'babel' — uses @babel/parser (requires `@babel/parser`)
   parser?: 'regex' | 'typescript' | 'babel';
+
+  // Custom SVGO options applied during icon optimization.
+  // Extra plugins are appended after the built-in defaults
+  // (preset-default, removeDimensions, removeXMLNS).
+  svgoOptions?: {
+    plugins?: PluginConfig[];  // extra plugins appended after defaults
+    multipass?: boolean;       // default: true
+  };
 }
 ```
 
@@ -357,13 +435,18 @@ The manifest contains a machine-readable report of what was generated:
   "generatedAt": "2025-03-25T12:00:00.000Z",
   "iconsCount": 34,
   "missingCount": 3,
+  "totalSizeBytes": 4820,
   "icons": [
-    { "name": "cart", "sources": ["src/components/Cart.tsx:5"] },
-    { "name": "ui/arrow", "sources": ["src/components/Nav.tsx:2"] }
+    { "name": "cart", "sources": ["src/components/Cart.tsx:5"], "originalBytes": 612, "sizeBytes": 380 },
+    { "name": "ui/arrow", "sources": ["src/components/Nav.tsx:2"], "originalBytes": 445, "sizeBytes": 210 }
   ],
   "missing": ["PacmanLazy", "SplitLazy"]
 }
 ```
+
+- `totalSizeBytes` — total size of all `<symbol>` elements after optimization
+- `originalBytes` — size of the source SVG file before SVGO
+- `sizeBytes` — size of the `<symbol>` element after SVGO optimization
 
 Useful for CI pipelines (fail if too many icons are missing), build dashboards, and debugging why a particular icon is or isn't in the sprite.
 
