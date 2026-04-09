@@ -81,6 +81,23 @@ describe('createMFEntry', () => {
     expect(mountPoint.innerHTML).toBe('')
   })
 
+  it('calls onBeforeUnmount before unmounting', async () => {
+    const onBeforeUnmount = vi.fn()
+    const register = createMFEntry(Counter, undefined, onBeforeUnmount)
+    let unmount!: () => void
+
+    await act(async () => {
+      unmount = register({ mountPointer: mountPoint, props: { count: 0 } })
+    })
+
+    expect(onBeforeUnmount).not.toHaveBeenCalled()
+
+    act(() => { unmount() })
+
+    expect(onBeforeUnmount).toHaveBeenCalledOnce()
+    expect(onBeforeUnmount).toHaveBeenCalledWith({ mountPointer: mountPoint })
+  })
+
   it('uses a custom namespace when provided', async () => {
     const register = createMFEntry(Counter)
 

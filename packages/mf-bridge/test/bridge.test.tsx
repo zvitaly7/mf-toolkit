@@ -124,6 +124,45 @@ describe('MFBridgeLazy', () => {
     expect(onBeforeMount).not.toHaveBeenCalled()
   })
 
+  it('calls onLoad after successful load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+    const onLoad = vi.fn()
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'hi' }, onLoad }))
+    })
+
+    expect(onLoad).toHaveBeenCalledOnce()
+  })
+
+  it('does not call onLoad when load fails', async () => {
+    const loader = () => Promise.reject(new Error('fail'))
+    const onLoad = vi.fn()
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'x' }, onLoad }))
+    })
+
+    expect(onLoad).not.toHaveBeenCalled()
+  })
+
+  it('remounts when register factory changes', async () => {
+    const loaderA = () => Promise.resolve(labelRegister)
+    const loaderB = () => Promise.resolve(labelRegister)
+
+    const { rerender } = await act(async () =>
+      render(createElement(MFBridgeLazy, { register: loaderA, props: { text: 'from-a' } })),
+    )
+
+    expect(screen.getByTestId('label').textContent).toBe('from-a')
+
+    await act(async () => {
+      rerender(createElement(MFBridgeLazy, { register: loaderB, props: { text: 'from-b' } }))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('from-b')
+  })
+
   it('calls onError and shows fallback when register rejects', async () => {
     const error = new Error('chunk load failed')
     const loader = () => Promise.reject(error)
