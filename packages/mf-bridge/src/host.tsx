@@ -50,11 +50,16 @@ export function MFBridge<T extends RegisterFn<any>>({
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
   const busRef = useRef<DOMEventBus | null>(null)
+  const isFirstRender = useRef(true)
 
+  // Re-run when register or namespace changes: tear down the old remote and
+  // mount the new one. isFirstRender is reset so the props-streaming effect
+  // skips the redundant initial send.
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
+    isFirstRender.current = true
     const bus = new DOMEventBus(el, namespace)
     busRef.current = bus
     unmountRef.current = register({ mountPointer: el, props, namespace })
@@ -65,11 +70,10 @@ export function MFBridge<T extends RegisterFn<any>>({
       unmountRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [register, namespace])
 
   // Stream prop updates when props reference changes.
   // Skips the initial mount — props were already passed to register() above.
-  const isFirstRender = useRef(true)
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false
@@ -87,6 +91,9 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   /**
    * Async factory that resolves to a `RegisterFn`.
    * Typically `() => import('./remote').then(m => m.register)`.
+   *
+   * The factory is called again whenever its reference changes, so keep it
+   * stable (define outside the component or wrap with `useCallback`).
    */
   register: T
   /** Props forwarded to the remote component. Type is inferred from `register`. */
@@ -105,6 +112,8 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * The component stays on `fallback` when this happens.
    */
   onError?: (err: unknown) => void
+  /** Called once the remote module has loaded and is ready to mount. */
+  onLoad?: () => void
 }
 
 /**
@@ -112,6 +121,9 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
  *
  * Renders `fallback` while loading. Once the remote module resolves,
  * switches to `MFBridge` which mounts the component and starts prop streaming.
+ *
+ * If `register` changes (e.g. switching between remotes) the previous remote
+ * is torn down and the new one is loaded from scratch.
  *
  * @example
  * <MFBridgeLazy
@@ -127,26 +139,40 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   tagName = 'mf-bridge',
   namespace = DEFAULT_NS,
   onError,
+  onLoad,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
 
+  // Keep callbacks in refs so changing them never triggers a reload.
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
+  const onLoadRef = useRef(onLoad)
+  onLoadRef.current = onLoad
+
+  // Re-run whenever the factory reference changes: reset to loading state and
+  // fetch the new remote. Cancellation prevents stale resolves from a previous
+  // factory from overwriting state.
   useEffect(() => {
     let cancelled = false
+    setRegisterFn(null)
+    setFailed(false)
     register()
       .then((fn) => {
-        if (!cancelled) setRegisterFn(() => fn)
+        if (!cancelled) {
+          setRegisterFn(() => fn)
+          onLoadRef.current?.()
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return
         setFailed(true)
-        onError?.(err)
+        onErrorRef.current?.(err)
       })
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [register]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (failed || !registerFn) return createElement(() => fallback as React.JSX.Element)
 

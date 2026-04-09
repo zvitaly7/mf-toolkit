@@ -12,16 +12,21 @@ export { DOMEventBus } from './dom-event-bus.js'
  * Call this in your microfrontend's exposed entry module and export the result
  * as `register`. The host will call it at runtime with a mount point and props.
  *
- * @param Component  The React component to expose.
- * @param onBeforeMount  Optional hook called once before the first render.
+ * @param Component       The React component to expose.
+ * @param onBeforeMount   Optional hook called once before the first render.
  *   Use it for DI / service injection that must happen before the component
  *   sees its props.
+ * @param onBeforeUnmount Optional hook called just before the component is
+ *   unmounted. Use it to clean up DI registrations or other side-effects
+ *   set up in `onBeforeMount`.
  *
  * @example
  * // mf/checkout/entry.ts  (exposed via Module Federation)
- * export const register = createMFEntry(CheckoutWidget, ({ props }) => {
- *   container.set(props.services)
- * })
+ * export const register = createMFEntry(
+ *   CheckoutWidget,
+ *   ({ props }) => { container.set(props.services) },
+ *   ({ mountPointer }) => { container.reset() },
+ * )
  */
 export function createMFEntry<T extends ComponentType<any>>(
   Component: T,
@@ -29,6 +34,7 @@ export function createMFEntry<T extends ComponentType<any>>(
     mountPointer: HTMLElement
     props: ComponentProps<T>
   }) => void,
+  onBeforeUnmount?: (opts: { mountPointer: HTMLElement }) => void,
 ): RegisterFn<ComponentProps<T>> {
   return ({ mountPointer, props, namespace = 'mfbridge' }) => {
     onBeforeMount?.({ mountPointer, props })
@@ -42,6 +48,7 @@ export function createMFEntry<T extends ComponentType<any>>(
     })
 
     return () => {
+      onBeforeUnmount?.({ mountPointer })
       unsubscribe()
       root.unmount()
     }
