@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { createElement, useRef, useState } from 'react'
 import { createMFEntry } from '../src/entry.js'
-import { MFBridge, MFBridgeLazy } from '../src/host.js'
+import { MFBridge, MFBridgeLazy, preloadMF } from '../src/host.js'
 
 afterEach(cleanup)
 
@@ -200,5 +200,113 @@ describe('MFBridgeLazy', () => {
 
     expect(screen.getByTestId('fb')).toBeTruthy()
     expect(screen.queryByTestId('label')).toBeNull()
+  })
+})
+
+// ─── debug ─────────────────────────────────────────────────────────────────
+
+describe('debug mode', () => {
+  beforeEach(() => { vi.spyOn(console, 'debug').mockImplementation(() => {}) })
+  afterEach(() => { vi.restoreAllMocks(); cleanup() })
+
+  it('logs mount and unmount events for MFBridge', async () => {
+    const { unmount } = await act(async () =>
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'x' }, debug: true })),
+    )
+
+    expect(console.debug).toHaveBeenCalledWith(
+      expect.stringContaining('mf-bridge'),
+      'mount',
+      expect.anything(),
+    )
+
+    act(() => { unmount() })
+
+    expect(console.debug).toHaveBeenCalledWith(
+      expect.stringContaining('mf-bridge'),
+      'unmount',
+    )
+  })
+
+  it('logs propsChanged when props update', async () => {
+    const { rerender } = await act(async () =>
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'a' }, debug: true })),
+    )
+
+    await act(async () => {
+      rerender(createElement(MFBridge, { register: labelRegister, props: { text: 'b' }, debug: true }))
+    })
+
+    expect(console.debug).toHaveBeenCalledWith(
+      expect.stringContaining('mf-bridge'),
+      'propsChanged',
+      expect.objectContaining({ text: 'b' }),
+    )
+  })
+
+  it('logs load:start and load:ok for MFBridgeLazy', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'x' }, debug: true }))
+    })
+
+    expect(console.debug).toHaveBeenCalledWith(expect.stringContaining('mf-bridge'), 'load:start')
+    expect(console.debug).toHaveBeenCalledWith(expect.stringContaining('mf-bridge'), 'load:ok')
+  })
+
+  it('logs load:error on failure', async () => {
+    const err = new Error('fail')
+    const loader = () => Promise.reject(err)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'x' }, debug: true }))
+    })
+
+    expect(console.debug).toHaveBeenCalledWith(
+      expect.stringContaining('mf-bridge'),
+      'load:error',
+      err,
+    )
+  })
+
+  it('does not log when debug is false', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'x' } }))
+    })
+
+    expect(console.debug).not.toHaveBeenCalled()
+  })
+})
+
+// ─── preloadMF ─────────────────────────────────────────────────────────────
+
+describe('preloadMF', () => {
+  afterEach(cleanup)
+
+  it('starts the load before render', async () => {
+    let callCount = 0
+    const loader = () => { callCount++; return Promise.resolve(labelRegister) }
+
+    preloadMF(loader)
+    expect(callCount).toBe(1)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'pre' } }))
+    })
+
+    // loader must have been called exactly once — render reused the cached promise
+    expect(callCount).toBe(1)
+    expect(screen.getByTestId('label').textContent).toBe('pre')
+  })
+
+  it('does not call loader twice when called multiple times with same reference', () => {
+    let callCount = 0
+    const loader = () => { callCount++; return Promise.resolve(labelRegister) }
+
+    preloadMF(loader)
+    preloadMF(loader)
+
+    expect(callCount).toBe(1)
   })
 })
