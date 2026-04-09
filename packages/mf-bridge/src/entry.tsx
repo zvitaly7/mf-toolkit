@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { DOMEventBus } from './dom-event-bus.js'
 import type { RegisterFn } from './types.js'
 
+export { DOMEventBus } from './dom-event-bus.js'
+
 /**
  * Wraps a React component for mounting by a host shell.
  *

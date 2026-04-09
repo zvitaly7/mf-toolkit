@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import { createElement } from 'react'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import { createElement, useRef, useState } from 'react'
 import { createMFEntry } from '../src/entry.js'
 import { MFBridge, MFBridgeLazy } from '../src/host.js'
 
@@ -33,6 +33,33 @@ describe('MFBridge', () => {
     })
 
     expect(screen.getByTestId('label').textContent).toBe('v2')
+  })
+
+  it('does not send propsChanged when parent re-renders with the same props reference', async () => {
+    const sendSpy = vi.fn()
+    const stableProps = { text: 'stable' }
+
+    // Wrapper that re-renders MFBridge with the same props object but different parent state
+    function Wrapper() {
+      const [tick, setTick] = useState(0)
+      // expose setTick so we can trigger re-renders from outside
+      ;(Wrapper as any)._setTick = setTick
+      return createElement(MFBridge, { register: labelRegister, props: stableProps })
+    }
+
+    await act(async () => { render(createElement(Wrapper)) })
+
+    // Patch the bus send method after mount to spy on it
+    const container = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    container.addEventListener = new Proxy(container.addEventListener, { apply: () => {} })
+
+    const dispatchSpy = vi.spyOn(container, 'dispatchEvent')
+
+    // Trigger a parent re-render without changing props
+    await act(async () => { ;(Wrapper as any)._setTick?.((n: number) => n + 1) })
+
+    // dispatchEvent should NOT have been called because props reference didn't change
+    expect(dispatchSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -95,5 +122,44 @@ describe('MFBridgeLazy', () => {
     await act(async () => { resolve(guardedRegister) })
 
     expect(onBeforeMount).not.toHaveBeenCalled()
+  })
+
+  it('calls onError and shows fallback when register rejects', async () => {
+    const error = new Error('chunk load failed')
+    const loader = () => Promise.reject(error)
+    const onError = vi.fn()
+
+    await act(async () => {
+      render(
+        createElement(MFBridgeLazy, {
+          register: loader,
+          props: { text: 'x' },
+          fallback: createElement('span', { 'data-testid': 'fb' }, 'unavailable'),
+          onError,
+        }),
+      )
+    })
+
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError).toHaveBeenCalledWith(error)
+    expect(screen.getByTestId('fb').textContent).toBe('unavailable')
+    expect(screen.queryByTestId('label')).toBeNull()
+  })
+
+  it('stays on fallback after load failure, does not mount remote', async () => {
+    const loader = () => Promise.reject(new Error('network error'))
+
+    await act(async () => {
+      render(
+        createElement(MFBridgeLazy, {
+          register: loader,
+          props: { text: 'x' },
+          fallback: createElement('span', { 'data-testid': 'fb' }, 'fallback'),
+        }),
+      )
+    })
+
+    expect(screen.getByTestId('fb')).toBeTruthy()
+    expect(screen.queryByTestId('label')).toBeNull()
   })
 })

@@ -67,7 +67,8 @@ export function MFBridge<T extends RegisterFn<any>>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Stream prop updates, skipping the initial mount (props already passed above).
+  // Stream prop updates when props reference changes.
+  // Skips the initial mount — props were already passed to register() above.
   const isFirstRender = useRef(true)
   useEffect(() => {
     if (isFirstRender.current) {
@@ -75,7 +76,7 @@ export function MFBridge<T extends RegisterFn<any>>({
       return
     }
     busRef.current?.send('propsChanged', props)
-  })
+  }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return createElement(tagName, { ref: containerRef }) as React.JSX.Element
 }
@@ -90,7 +91,7 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   register: T
   /** Props forwarded to the remote component. Type is inferred from `register`. */
   props: MFLazyProps<T>
-  /** Rendered while the remote module is loading. */
+  /** Rendered while the remote module is loading or if loading fails. */
   fallback?: ReactNode
   /** HTML tag used as the mount-point element. Defaults to `"mf-bridge"`. */
   tagName?: string
@@ -99,6 +100,11 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * Must match the namespace used by `createMFEntry` (defaults to `"mfbridge"`).
    */
   namespace?: string
+  /**
+   * Called when the `register` factory rejects (e.g. network error, missing chunk).
+   * The component stays on `fallback` when this happens.
+   */
+  onError?: (err: unknown) => void
 }
 
 /**
@@ -120,21 +126,29 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   fallback = null,
   tagName = 'mf-bridge',
   namespace = DEFAULT_NS,
+  onError,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    register().then((fn) => {
-      if (!cancelled) setRegisterFn(() => fn)
-    })
+    register()
+      .then((fn) => {
+        if (!cancelled) setRegisterFn(() => fn)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setFailed(true)
+        onError?.(err)
+      })
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (!registerFn) return createElement(() => fallback as React.JSX.Element)
+  if (failed || !registerFn) return createElement(() => fallback as React.JSX.Element)
 
   return createElement(MFBridge, {
     register: registerFn,
