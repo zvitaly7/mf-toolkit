@@ -195,9 +195,9 @@ function Checkout({ orderId, step }: { orderId: string; step: 'summary' | 'payme
 
 ---
 
-## DI and setup before first render
+## DI — setup and teardown
 
-Use the `onBeforeMount` callback in `createMFEntry` for anything that must run before the component sees its first props — service injection, DI container setup, global stores:
+Use `onBeforeMount` and `onBeforeUnmount` in `createMFEntry` to bracket your DI container around the component's lifetime:
 
 ```tsx
 // checkout-mf/src/entry.ts
@@ -205,14 +205,102 @@ import { createMFEntry } from '@mf-toolkit/mf-bridge/entry'
 import { CheckoutWidget } from './CheckoutWidget'
 import { container } from './di'
 
-export const register = createMFEntry(CheckoutWidget, ({ props }) => {
-  // Called once, before createRoot. Safe to read initial props here.
-  container.set('apiClient', props.apiClient)
-  container.set('user', props.user)
-})
+export const register = createMFEntry(
+  CheckoutWidget,
+  ({ props }) => {
+    // Called once, before createRoot. Safe to read initial props here.
+    container.set('apiClient', props.apiClient)
+    container.set('user', props.user)
+  },
+  () => {
+    // Called just before root.unmount(). Clean up DI registrations.
+    container.reset()
+  },
+)
 ```
 
-`onBeforeMount` receives `{ mountPointer, props }`. The `mountPointer` is the DOM element the component will mount into — useful if you need to attach non-React content alongside it.
+Both callbacks receive `{ mountPointer }`. `onBeforeMount` also receives `props`.
+
+---
+
+## Error containment
+
+When the remote component throws during render, the bridge isolates the crash: the mount point renders `null` instead of broken UI, and the host is notified via `onError`:
+
+```tsx
+// checkout-mf/src/entry.ts
+export const register = createMFEntry(
+  CheckoutWidget,
+  undefined,
+  undefined,
+  (err) => {
+    logger.error('CheckoutWidget crashed', err)
+    analytics.track('mf_render_error', { remote: 'checkout' })
+  },
+)
+```
+
+The error boundary **resets automatically** on the next `propsChanged` event, so a recovered component re-renders cleanly when new props arrive — no manual reset needed.
+
+---
+
+## Preloading for instant mount
+
+Call `preloadMF` as early as possible (on hover, on route prefetch, on app init) to start loading the remote bundle before the component renders. `MFBridgeLazy` reuses the already-started promise — no duplicate network request.
+
+```tsx
+import { preloadMF } from '@mf-toolkit/mf-bridge'
+
+const checkoutLoader = () => import('checkout/entry').then(m => m.register)
+
+// Start loading on hover — before the user clicks
+<button onMouseEnter={() => preloadMF(checkoutLoader)}>
+  Checkout
+</button>
+
+// Later, when the component actually renders, the module is already loaded
+<MFBridgeLazy register={checkoutLoader} props={{ orderId }} fallback={<Spinner />} />
+```
+
+> **Note:** `preloadMF` uses the loader function reference as the cache key. Define the loader outside your component (or wrap with `useCallback`) so the reference is stable.
+
+---
+
+## Retry on load failure
+
+Use `retryCount` and `retryDelay` to automatically retry a failed load — useful for transient CDN errors or flaky network conditions:
+
+```tsx
+<MFBridgeLazy
+  register={() => import('checkout/entry').then(m => m.register)}
+  props={{ orderId }}
+  fallback={<Spinner />}
+  retryCount={3}        // up to 3 additional attempts after the first failure
+  retryDelay={1000}     // wait 1 s between each retry
+  onError={(err) => { logger.error('checkout failed to load', err) }}
+/>
+```
+
+Each retry bypasses the preload cache and calls the factory again with a fresh network request. When all attempts are exhausted, `onError` is called once and the component stays on `fallback`.
+
+---
+
+## Debug mode
+
+Add `debug` to any bridge instance to get `console.debug` logs for every lifecycle event:
+
+```tsx
+<MFBridgeLazy
+  register={checkoutLoader}
+  props={{ orderId }}
+  debug={process.env.NODE_ENV === 'development'}
+/>
+```
+
+`MFBridge` logs: `mount`, `propsChanged`, `unmount`
+`MFBridgeLazy` logs: `load:start`, `load:retry`, `load:ok`, `load:error`
+
+All log lines are prefixed with `[mf-bridge:<namespace>]` for easy filtering in DevTools. The flag is `false` by default — zero cost in production.
 
 ---
 
@@ -294,24 +382,25 @@ The `namespace` prop on `MFBridge`/`MFBridgeLazy` is forwarded to `register()` a
 
 ## API reference
 
-### `createMFEntry(Component, onBeforeMount?)` — remote side
+### `createMFEntry(Component, onBeforeMount?, onBeforeUnmount?, onError?)` — remote side
 
 **Import:** `@mf-toolkit/mf-bridge/entry`
 
 ```typescript
 function createMFEntry<T extends ComponentType<any>>(
   Component: T,
-  onBeforeMount?: (opts: {
-    mountPointer: HTMLElement
-    props: ComponentProps<T>
-  }) => void,
+  onBeforeMount?: (opts: { mountPointer: HTMLElement; props: ComponentProps<T> }) => void,
+  onBeforeUnmount?: (opts: { mountPointer: HTMLElement }) => void,
+  onError?: (err: Error) => void,
 ): RegisterFn<ComponentProps<T>>
 ```
 
 | Parameter | Type | Description |
 |---|---|---|
 | `Component` | `ComponentType<P>` | React component to expose to the host |
-| `onBeforeMount` | `(opts) => void` | Optional. Called once before `createRoot`. Use for DI setup. |
+| `onBeforeMount` | `(opts) => void` | Called once before `createRoot`. Use for DI setup. |
+| `onBeforeUnmount` | `(opts) => void` | Called just before `root.unmount()`. Use to clean up DI. |
+| `onError` | `(err: Error) => void` | Called when the component throws during render. The mount point renders `null`; the boundary resets on the next `propsChanged`. |
 
 Returns a `RegisterFn<P>` — a function the host calls at mount time.
 
@@ -342,16 +431,26 @@ function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>(props: {
   fallback?: ReactNode
   tagName?: string
   namespace?: string
+  onLoad?: () => void
+  onError?: (err: unknown) => void
+  debug?: boolean
+  retryCount?: number
+  retryDelay?: number
 }): JSX.Element
 ```
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `register` | `() => Promise<RegisterFn<P>>` | — | Async factory. Evaluated once on mount. |
+| `register` | `() => Promise<RegisterFn<P>>` | — | Async factory. Re-evaluated when reference changes. Pre-warm with `preloadMF`. |
 | `props` | `MFLazyProps<typeof register>` | — | Props forwarded to the remote component. Inferred from `register`. |
-| `fallback` | `ReactNode` | `null` | Rendered while the remote module is loading. |
-| `tagName` | `string` | `'mf-bridge'` | HTML tag used as the mount-point element. |
+| `fallback` | `ReactNode` | `null` | Rendered while loading or after permanent failure. |
+| `tagName` | `string` | `'mf-bridge'` | HTML tag for the mount-point element. |
 | `namespace` | `string` | `'mfbridge'` | CustomEvent namespace for prop streaming. |
+| `onLoad` | `() => void` | — | Called once the remote module resolves successfully. |
+| `onError` | `(err) => void` | — | Called after all load attempts fail. Component stays on `fallback`. |
+| `debug` | `boolean` | `false` | Enable `console.debug` logging (`load:start/retry/ok/error`). |
+| `retryCount` | `number` | `0` | Additional load attempts after the first failure. |
+| `retryDelay` | `number` | `0` | Milliseconds between retries. |
 
 ---
 
@@ -365,6 +464,7 @@ function MFBridge<T extends RegisterFn<any>>(props: {
   props: MFProps<T>
   tagName?: string
   namespace?: string
+  debug?: boolean
 }): JSX.Element
 ```
 
@@ -374,6 +474,19 @@ function MFBridge<T extends RegisterFn<any>>(props: {
 | `props` | `MFProps<typeof register>` | — | Props forwarded to the remote component. Inferred from `register`. |
 | `tagName` | `string` | `'mf-bridge'` | HTML tag used as the mount-point element. |
 | `namespace` | `string` | `'mfbridge'` | CustomEvent namespace for prop streaming. |
+| `debug` | `boolean` | `false` | Enable `console.debug` logging (`mount`, `propsChanged`, `unmount`). |
+
+---
+
+### `preloadMF(loader)` — prefetch utility
+
+**Import:** `@mf-toolkit/mf-bridge`
+
+```typescript
+function preloadMF<T extends RegisterFn<any>>(loader: () => Promise<T>): void
+```
+
+Starts loading a remote module before `MFBridgeLazy` renders. Uses the loader reference as the cache key — `MFBridgeLazy` with the same reference reuses the in-flight promise. Calling `preloadMF` multiple times with the same reference is safe (no-op after the first call).
 
 ---
 
@@ -593,17 +706,15 @@ export function Checkout({ orderId }: { orderId: string }) {
 
 ---
 
-## What is not in v0.1
+## Planned / out of scope
 
-The following are planned for future versions and deliberately excluded from v0.1 to keep the API minimal:
-
-| Feature | Reason for deferral |
+| Feature | Status |
 |---|---|
 | Remote module registry / caching | Separate package: `@mf-toolkit/mf-loader` |
 | Type-safe `importRemote` wrapper | Separate package: `@mf-toolkit/mf-loader` |
-| `request/response` bidirectional RPC | v0.2 — two-way callback channel across bundles |
-| `iframe` transport mode | v0.2 — hard isolation between host and remote |
 | URL resolution / DEV port scanning | Separate package: `@mf-toolkit/mf-loader` |
+| `request/response` bidirectional RPC | Planned — two-way callback channel across bundles |
+| `iframe` transport mode | Planned — hard UI isolation between host and remote |
 
 ---
 
@@ -620,7 +731,7 @@ The following are planned for future versions and deliberately excluded from v0.
 - **React 18+ required on both sides.** The bridge calls `createRoot` inside `createMFEntry`. React 17 and below are not supported.
 - **Props are compared by reference.** The bridge sends a `propsChanged` event on every render where the `props` object reference changes. If you create a new object on every render (`props={{ a: 1 }}`), the remote re-renders on every host render. Stabilize with `useMemo` or move the object outside the component.
 - **Fallback flicker on fast connections.** `MFBridgeLazy` shows the fallback until the module resolves. On fast connections the fallback may flash for a single frame. Wrap in `Suspense` at a higher level to coalesce loading states if needed.
-- **SSR.** The bridge mounts in `useEffect`, which does not run on the server. The mount-point element renders empty on the server — plan your fallback and hydration accordingly.
+- **SSR.** The bridge mounts in `useEffect`, which does not run on the server. The mount-point element renders empty on the server — plan your fallback and hydration accordingly. If `RegisterFn` is somehow called in a non-DOM environment, it returns a no-op instead of crashing.
 
 ---
 
