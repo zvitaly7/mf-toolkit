@@ -1,0 +1,58 @@
+{
+  "name": "@mf-toolkit/mf-bridge",
+  "version": "0.1.0",
+  "description": "Type-safe bridge for mounting microfrontend React components into a host shell — with lazy loading, automatic prop streaming, and fallback.",
+  "author": "Vitaly Zheltko",
+  "license": "MIT",
+  "homepage": "https://github.com/zvitaly7/mf-toolkit/tree/main/packages/mf-bridge",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./entry": {
+      "types": "./dist/entry.d.ts",
+      "default": "./dist/entry.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "microfrontend",
+    "module-federation",
+    "react",
+    "bridge",
+    "prop-streaming",
+    "lazy-loading"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zvitaly7/mf-toolkit",
+    "directory": "packages/mf-bridge"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@types/node": "^25.4.0",
+    "jsdom": "^26.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.3"
+  }
+}
