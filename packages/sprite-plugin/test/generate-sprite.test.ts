@@ -143,5 +143,10 @@ describe('generateSprite', () => {
     expect(manifest.icons).toBeInstanceOf(Array);
     expect(manifest.icons.length).toBe(manifest.iconsCount);
     expect(manifest.missing).toBeInstanceOf(Array);
+    expect(typeof manifest.totalSizeBytes).toBe('number');
+    expect(manifest.totalSizeBytes).toBeGreaterThan(0);
+    expect(typeof manifest.icons[0].sizeBytes).toBe('number');
+    expect(typeof manifest.icons[0].originalBytes).toBe('number');
+    expect(manifest.icons[0].originalBytes).toBeGreaterThanOrEqual(manifest.icons[0].sizeBytes);
   });
 });

@@ -83,6 +83,26 @@ describe('buildSprite', () => {
     expect(result.svg).toMatch(/<\/svg>$/);
   });
 
+  it('returns byte sizes for each included icon', async () => {
+    const result = await buildSprite(ICONS_DIR, ['cart', 'search']);
+
+    expect(result.sizes.has('cart')).toBe(true);
+    expect(result.sizes.has('search')).toBe(true);
+
+    const cartSize = result.sizes.get('cart')!;
+    expect(cartSize.originalBytes).toBeGreaterThan(0);
+    expect(cartSize.sizeBytes).toBeGreaterThan(0);
+    // SVGO should reduce the size
+    expect(cartSize.originalBytes).toBeGreaterThanOrEqual(cartSize.sizeBytes);
+  });
+
+  it('does not include sizes for missing icons', async () => {
+    const result = await buildSprite(ICONS_DIR, ['cart', 'nonexistent']);
+
+    expect(result.sizes.has('cart')).toBe(true);
+    expect(result.sizes.has('nonexistent')).toBe(false);
+  });
+
   it('prefixes internal IDs to prevent collisions between icons', async () => {
     const result = await buildSprite(ICONS_DIR, ['gradient-icon']);
 

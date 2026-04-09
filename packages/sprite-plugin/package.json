@@ -1,11 +1,12 @@
 {
   "name": "@mf-toolkit/sprite-plugin",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "SVG sprite generator that statically analyzes your code and builds optimized sprites containing only the icons your microfrontend actually uses.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "homepage": "https://github.com/zvitaly7/mf-toolkit/tree/main/packages/sprite-plugin",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -14,6 +15,14 @@
     "./webpack": {
       "types": "./dist/plugins/webpack.d.ts",
       "default": "./dist/plugins/webpack.js"
+    },
+    "./rollup": {
+      "types": "./dist/plugins/rollup.d.ts",
+      "default": "./dist/plugins/rollup.js"
+    },
+    "./vite": {
+      "types": "./dist/plugins/vite.d.ts",
+      "default": "./dist/plugins/vite.js"
     }
   },
   "files": [
@@ -32,6 +41,8 @@
     "svg",
     "sprite",
     "webpack",
+    "vite",
+    "rollup",
     "icons",
     "optimization"
   ],
@@ -45,11 +56,15 @@
   },
   "peerDependencies": {
     "typescript": ">=4.7",
-    "@babel/parser": ">=7.20"
+    "@babel/parser": ">=7.20",
+    "rollup": ">=3",
+    "vite": ">=4"
   },
   "peerDependenciesMeta": {
     "typescript": { "optional": true },
-    "@babel/parser": { "optional": true }
+    "@babel/parser": { "optional": true },
+    "rollup": { "optional": true },
+    "vite": { "optional": true }
   },
   "devDependencies": {
     "@babel/parser": "^7.20.0",
