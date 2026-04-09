@@ -170,9 +170,24 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   onLoad?: () => void
   /**
    * Enable `console.debug` logging for this bridge instance.
-   * Logs load:start, load:ok, load:error events with the namespace prefix.
+   * Logs load:start, load:ok, load:retry, load:error events with the namespace prefix.
    */
   debug?: boolean
+  /**
+   * Number of additional load attempts after the first failure.
+   * Defaults to `0` (no retry). Each retry calls the `register` factory again —
+   * pair with `retryDelay` to avoid hammering a failing CDN.
+   *
+   * @example
+   * // Try up to 3 times total, 1 s apart
+   * <MFBridgeLazy retryCount={2} retryDelay={1000} ... />
+   */
+  retryCount?: number
+  /**
+   * Milliseconds to wait between retry attempts. Defaults to `0`.
+   * Has no effect when `retryCount` is `0`.
+   */
+  retryDelay?: number
 }
 
 /**
@@ -203,51 +218,94 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   onError,
   onLoad,
   debug = false,
+  retryCount = 0,
+  retryDelay = 0,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
 
-  // Keep callbacks in refs so changing them never triggers a reload.
+  // Keep callbacks and config in refs so changing them never triggers a reload.
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
   const onLoadRef = useRef(onLoad)
   onLoadRef.current = onLoad
   const debugRef = useRef(debug)
   debugRef.current = debug
+  const retryCountRef = useRef(retryCount)
+  retryCountRef.current = retryCount
+  const retryDelayRef = useRef(retryDelay)
+  retryDelayRef.current = retryDelay
 
   // Re-run whenever the factory reference changes: reset to loading state and
   // fetch the new remote. If preloadMF was called with the same loader, reuse
   // the in-flight/resolved promise — no second network request.
+  // On failure, retries up to retryCount times (bypassing cache on each retry).
   // Cancellation prevents stale resolves from a previous factory from
   // overwriting state.
   useEffect(() => {
     let cancelled = false
+    let attempt = 0
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
     setRegisterFn(null)
     setFailed(false)
 
     const ns = namespace
-    dbg(ns, debugRef.current, 'load:start')
 
-    const cached = preloadCache.get(register)
-    const promise = cached ?? (register() as Promise<RegisterFn<any>>)
-    if (!cached) preloadCache.set(register, promise)
+    function tryLoad(): void {
+      attempt++
+      dbg(ns, debugRef.current, 'load:start', ...(attempt > 1 ? [{ attempt }] : []))
 
-    promise
-      .then((fn) => {
-        if (!cancelled) {
-          dbg(ns, debugRef.current, 'load:ok')
-          setRegisterFn(() => fn)
-          onLoadRef.current?.()
+      // First attempt: use preloaded promise if available.
+      // Subsequent attempts: bypass cache — the previous promise already failed.
+      let promise: Promise<RegisterFn<any>>
+      if (attempt === 1) {
+        const cached = preloadCache.get(register)
+        if (cached) {
+          promise = cached
+        } else {
+          promise = register() as Promise<RegisterFn<any>>
+          preloadCache.set(register, promise)
         }
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        dbg(ns, debugRef.current, 'load:error', err)
-        setFailed(true)
-        onErrorRef.current?.(err)
-      })
+      } else {
+        preloadCache.delete(register)
+        promise = register() as Promise<RegisterFn<any>>
+      }
+
+      promise
+        .then((fn) => {
+          if (!cancelled) {
+            dbg(ns, debugRef.current, 'load:ok')
+            setRegisterFn(() => fn)
+            onLoadRef.current?.()
+          }
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return
+          const maxAttempts = 1 + retryCountRef.current
+          if (attempt < maxAttempts) {
+            const remaining = maxAttempts - attempt
+            dbg(ns, debugRef.current, 'load:retry', { attempt, remaining })
+            const delay = retryDelayRef.current
+            if (delay > 0) {
+              timeoutId = setTimeout(tryLoad, delay)
+            } else {
+              // Use a microtask to avoid unbounded synchronous recursion
+              Promise.resolve().then(() => { if (!cancelled) tryLoad() })
+            }
+          } else {
+            dbg(ns, debugRef.current, 'load:error', err)
+            setFailed(true)
+            onErrorRef.current?.(err)
+          }
+        })
+    }
+
+    tryLoad()
+
     return () => {
       cancelled = true
+      if (timeoutId !== null) clearTimeout(timeoutId)
     }
   }, [register]) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -310,3 +310,78 @@ describe('preloadMF', () => {
     expect(callCount).toBe(1)
   })
 })
+
+// ─── retry ─────────────────────────────────────────────────────────────────
+
+describe('retry', () => {
+  afterEach(cleanup)
+
+  it('mounts successfully after transient failures', async () => {
+    let attempt = 0
+    const loader = () => {
+      attempt++
+      return attempt < 3 ? Promise.reject(new Error(`fail ${attempt}`)) : Promise.resolve(labelRegister)
+    }
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'ok' }, retryCount: 2 }))
+    })
+
+    expect(attempt).toBe(3)
+    expect(screen.getByTestId('label').textContent).toBe('ok')
+  })
+
+  it('calls onError only after all retries are exhausted', async () => {
+    const error = new Error('always fails')
+    let attempt = 0
+    const loader = () => { attempt++; return Promise.reject(error) }
+    const onError = vi.fn()
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'x' },
+        retryCount: 2,
+        onError,
+      }))
+    })
+
+    expect(attempt).toBe(3) // 1 initial + 2 retries
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError).toHaveBeenCalledWith(error)
+  })
+
+  it('shows fallback throughout retries and after final failure', async () => {
+    const loader = () => Promise.reject(new Error('fail'))
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'x' },
+        retryCount: 1,
+        fallback: createElement('span', { 'data-testid': 'fb' }, 'loading'),
+      }))
+    })
+
+    expect(screen.getByTestId('fb')).toBeTruthy()
+    expect(screen.queryByTestId('label')).toBeNull()
+  })
+
+  it('clears preload cache on retry so fresh requests are made', async () => {
+    let attempt = 0
+    const loader = () => {
+      attempt++
+      return attempt === 1 ? Promise.reject(new Error('first try')) : Promise.resolve(labelRegister)
+    }
+
+    // Warm the cache with the first (failing) promise
+    preloadMF(loader)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'fresh' }, retryCount: 1 }))
+    })
+
+    expect(attempt).toBe(2) // preload (fail) + retry (success)
+    expect(screen.getByTestId('label').textContent).toBe('fresh')
+  })
+})
