@@ -3,7 +3,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-Build-time optimization tools for microfrontend architectures. Each package works independently and is published separately to npm.
+A modular collection of build-time and runtime tools for microfrontend architectures. Each package works independently and is published separately to npm.
 
 ---
 
@@ -98,11 +98,53 @@ new MfSpriteWebpackPlugin({
 
 ---
 
+### 🌉 MF Bridge — [@mf-toolkit/mf-bridge](./packages/mf-bridge)
+
+[![npm version](https://img.shields.io/npm/v/@mf-toolkit/mf-bridge?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/mf-bridge)
+[![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
+
+**Mount a microfrontend React component into a host shell — with lazy loading, automatic prop streaming, and a typed fallback.**
+
+Replaces the repetitive `moved_to_mf_*` wrapper pattern. Instead of copy-pasting 15–20 lines of mount/unmount/event boilerplate for every remote component, define the contract once and let the bridge handle the lifecycle.
+
+```bash
+npm install @mf-toolkit/mf-bridge
+```
+
+```tsx
+// Remote side (inside your MF, exposed via Module Federation)
+import { createMFEntry } from '@mf-toolkit/mf-bridge/entry'
+export const register = createMFEntry(CheckoutWidget)
+
+// Host side (inside your shell app)
+import { MFBridgeLazy } from '@mf-toolkit/mf-bridge'
+
+<MFBridgeLazy
+  register={() => import('checkout/entry').then(m => m.register)}
+  props={{ orderId, user }}          // type-inferred from register
+  fallback={<LocalCheckout />}
+/>
+```
+
+**What it does:**
+
+- 🔗 **Type-safe contract** — props type is inferred end-to-end from the remote's `register` export; TypeScript catches mismatches at compile time
+- 📡 **Prop streaming** — prop updates are delivered to the mounted remote component via DOM `CustomEvent`s on the shared mount-point element; no shared module state, no React context crossing bundle boundaries
+- ⏳ **Lazy loading** — `MFBridgeLazy` resolves the remote module asynchronously and shows a fallback while loading
+- 🛡️ **Error handling** — `onError` callback for load failures; component stays on fallback if the remote is unavailable
+- 🧹 **Clean lifecycle** — mount, re-render on prop change, and unmount are all handled; no leaked listeners
+
+> **Zero production dependencies.** Prop streaming uses the native `CustomEvent` API. React 18–20 peer dep.
+
+[![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/mf-bridge)
+
+---
+
 ## Philosophy
 
-- ⚡ **Build-time over runtime.** Optimize at build, ship less to the browser.
 - 📦 **Use what you need.** Every package is published independently to npm. No forced coupling.
-- 🪶 **Minimal dependencies.** Zero deps by default. No glob libraries — just the Node.js standard library.
+- ⚡ **Right layer for the right problem.** Build-time tools catch config errors before they ship; runtime tools handle what only exists at runtime.
+- 🪶 **Minimal dependencies.** Zero production deps by default — no glob libraries, no frameworks beyond declared peer deps.
 
 ## License
 
