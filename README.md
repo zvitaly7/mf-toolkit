@@ -103,6 +103,8 @@ new MfSpriteWebpackPlugin({
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/mf-bridge?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/mf-bridge)
 [![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
 
+![mf-bridge: mount React microfrontends with lazy loading, typed props, and DOM event prop streaming](./packages/mf-bridge/assets/feature.png)
+
 **Mount a microfrontend React component into a host shell — with lazy loading, automatic prop streaming, and a typed fallback.**
 
 Replaces the repetitive `moved_to_mf_*` wrapper pattern. Instead of copy-pasting 15–20 lines of mount/unmount/event boilerplate for every remote component, define the contract once and let the bridge handle the lifecycle.

@@ -55,7 +55,8 @@ jobs:
 
       - name: Test mf-bridge
         if: startsWith(github.ref, 'refs/tags/mf-bridge@') || inputs.package == 'mf-bridge'
-        run: npx vitest run packages/mf-bridge
+        run: npm run test
+        working-directory: packages/mf-bridge
 
       - name: Setup npm auth
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
