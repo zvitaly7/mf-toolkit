@@ -1,7 +1,7 @@
 {
   "name": "@mf-toolkit/mf-bridge",
-  "version": "0.1.0",
-  "description": "Type-safe bridge for mounting microfrontend React components into a host shell — with lazy loading, automatic prop streaming, and fallback.",
+  "version": "0.2.0",
+  "description": "Type-safe bridge for mounting microfrontend React components into a host shell — with lazy loading, prop streaming, remote→host events, status tracking, and fallback.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "homepage": "https://github.com/zvitaly7/mf-toolkit/tree/main/packages/mf-bridge",
