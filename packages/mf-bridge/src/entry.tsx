@@ -10,7 +10,7 @@ export { DOMEventBus } from './dom-event-bus.js'
 
 interface BoundaryProps {
   onError?: (err: Error) => void
-  children: ReactNode
+  children?: ReactNode
 }
 
 class MFEntryErrorBoundary extends Component<BoundaryProps, { failed: boolean }> {
