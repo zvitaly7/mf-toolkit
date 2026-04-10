@@ -51,6 +51,32 @@ export function preloadMF<T extends RegisterFn<any>>(
   }
 }
 
+/**
+ * Removes one or all entries from the preload cache.
+ *
+ * Pass a `loader` reference to evict a single entry — useful when you know
+ * a specific remote needs a fresh fetch (e.g. after a deploy or on auth change).
+ * Omit the argument to wipe the entire cache — useful in tests or when the
+ * whole app shell reloads.
+ *
+ * After clearing, the next `preloadMF(loader)` or `MFBridgeLazy` render will
+ * start a new network request.
+ *
+ * @example
+ * // Evict one remote after a background deploy
+ * clearPreloadCache(checkoutLoader)
+ *
+ * // Wipe all cached remotes on user logout
+ * clearPreloadCache()
+ */
+export function clearPreloadCache(loader?: () => Promise<RegisterFn<any>>): void {
+  if (loader !== undefined) {
+    preloadCache.delete(loader)
+  } else {
+    preloadCache.clear()
+  }
+}
+
 // ─── Sync bridge ─────────────────────────────────────────────────────────────
 
 export interface MFBridgeProps<T extends RegisterFn<any>> {
