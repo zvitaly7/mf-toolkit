@@ -3,7 +3,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { createElement, useRef, useState } from 'react'
 import { createMFEntry } from '../src/entry.js'
 import { DOMEventBus } from '../src/dom-event-bus.js'
-import { MFBridge, MFBridgeLazy, preloadMF } from '../src/host.js'
+import { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache } from '../src/host.js'
 
 afterEach(cleanup)
 
@@ -625,6 +625,67 @@ describe('preloadMF', () => {
     preloadMF(loader)
 
     expect(callCount).toBe(1)
+  })
+})
+
+// ─── clearPreloadCache ────────────────────────────────────────────────────
+
+describe('clearPreloadCache', () => {
+  afterEach(cleanup)
+
+  it('evicts a specific loader so the next preloadMF re-fetches', async () => {
+    let callCount = 0
+    const loader = () => { callCount++; return Promise.resolve(labelRegister) }
+
+    preloadMF(loader)
+    expect(callCount).toBe(1)
+
+    clearPreloadCache(loader)
+
+    preloadMF(loader)
+    expect(callCount).toBe(2)
+  })
+
+  it('evicted loader causes MFBridgeLazy to make a fresh request', async () => {
+    let callCount = 0
+    const loader = () => { callCount++; return Promise.resolve(labelRegister) }
+
+    preloadMF(loader)
+    clearPreloadCache(loader)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'fresh' } }))
+    })
+
+    expect(callCount).toBe(2) // preload + fresh render
+    expect(screen.getByTestId('label').textContent).toBe('fresh')
+  })
+
+  it('clears all loaders when called without arguments', () => {
+    let countA = 0
+    let countB = 0
+    const loaderA = () => { countA++; return Promise.resolve(labelRegister) }
+    const loaderB = () => { countB++; return Promise.resolve(labelRegister) }
+
+    preloadMF(loaderA)
+    preloadMF(loaderB)
+
+    clearPreloadCache()
+
+    preloadMF(loaderA)
+    preloadMF(loaderB)
+
+    expect(countA).toBe(2)
+    expect(countB).toBe(2)
+  })
+
+  it('is a no-op when called with a loader that was never preloaded', () => {
+    const loader = () => Promise.resolve(labelRegister)
+    expect(() => clearPreloadCache(loader)).not.toThrow()
+  })
+
+  it('is a no-op when cache is already empty', () => {
+    expect(() => clearPreloadCache()).not.toThrow()
   })
 })
 
