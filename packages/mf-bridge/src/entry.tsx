@@ -40,7 +40,8 @@ class MFEntryErrorBoundary extends Component<BoundaryProps, { failed: boolean }>
  * @param Component       The React component to expose.
  * @param onBeforeMount   Optional hook called once before the first render.
  *   Use it for DI / service injection that must happen before the component
- *   sees its props.
+ *   sees its props. Receives `namespace` and an `emit` function to push events
+ *   to the host shell via `onEvent`.
  * @param onBeforeUnmount Optional hook called just before the component is
  *   unmounted. Use it to clean up DI registrations or other side-effects
  *   set up in `onBeforeMount`.
@@ -53,7 +54,10 @@ class MFEntryErrorBoundary extends Component<BoundaryProps, { failed: boolean }>
  * // mf/checkout/entry.ts  (exposed via Module Federation)
  * export const register = createMFEntry(
  *   CheckoutWidget,
- *   ({ props }) => { container.set(props.services) },
+ *   ({ props, emit }) => {
+ *     container.set(props.services)
+ *     CheckoutWidget.onOrderPlaced = (id) => emit('orderPlaced', { id })
+ *   },
  *   ({ mountPointer }) => { container.reset() },
  *   (err) => { logger.error('checkout crashed', err) },
  * )
@@ -63,6 +67,10 @@ export function createMFEntry<T extends ComponentType<any>>(
   onBeforeMount?: (opts: {
     mountPointer: HTMLElement
     props: ComponentProps<T>
+    /** The CustomEvent namespace in use (matches the host's `namespace` prop). */
+    namespace: string
+    /** Emit a custom event to the host shell. The host receives it via `onEvent`. */
+    emit: (type: string, payload?: unknown) => void
   }) => void,
   onBeforeUnmount?: (opts: { mountPointer: HTMLElement }) => void,
   onError?: (err: Error) => void,
@@ -71,7 +79,12 @@ export function createMFEntry<T extends ComponentType<any>>(
     // Guard against accidental calls in SSR / non-DOM environments
     if (typeof document === 'undefined') return () => {}
 
-    onBeforeMount?.({ mountPointer, props })
+    // Create the bus before onBeforeMount so emit is available there.
+    const bus = new DOMEventBus(mountPointer, namespace)
+    const emit = (type: string, payload?: unknown): void =>
+      bus.send('event', { type, payload })
+
+    onBeforeMount?.({ mountPointer, props, namespace, emit })
 
     // errorKey increments on every propsChanged to reset the boundary so a
     // recovered component can render again after a previous crash.
@@ -87,7 +100,6 @@ export function createMFEntry<T extends ComponentType<any>>(
 
     render(props)
 
-    const bus = new DOMEventBus(mountPointer, namespace)
     const unsubscribe = bus.on<ComponentProps<T>>('propsChanged', (newProps) => {
       errorKey++
       render(newProps)
