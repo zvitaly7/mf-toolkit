@@ -848,3 +848,77 @@ describe('errorFallback', () => {
     expect(screen.queryByTestId('fb-error')).toBeNull()
   })
 })
+
+// ─── containerProps ───────────────────────────────────────────────────────
+
+describe('containerProps', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — applies id to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { id: 'checkout-slot' },
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.id).toBe('checkout-slot')
+  })
+
+  it('MFBridge — applies style to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { style: { minHeight: '200px' } },
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.style.minHeight).toBe('200px')
+  })
+
+  it('MFBridge — applies data-* attribute to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { 'data-remote': 'checkout' } as any,
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.getAttribute('data-remote')).toBe('checkout')
+  })
+
+  it('MFBridgeLazy — forwards containerProps to mount element after load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        containerProps: { id: 'checkout', 'data-slot': 'lazy' } as any,
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.id).toBe('checkout')
+    expect(el.getAttribute('data-slot')).toBe('lazy')
+  })
+
+  it('containerProps does not override the internal ref', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { id: 'has-ref' },
+      }))
+    })
+
+    // Remote component is mounted → bridge ref is working correctly
+    expect(screen.getByTestId('label').textContent).toBe('hi')
+  })
+})
