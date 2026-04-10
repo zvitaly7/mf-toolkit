@@ -4,9 +4,9 @@
 [![license](https://img.shields.io/npm/l/@mf-toolkit/mf-bridge?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
 
-**Mount a microfrontend React component from any Module Federation remote — with lazy loading, automatic prop streaming, and a typed fallback.**
+**Mount a microfrontend React component from any Module Federation remote — with lazy loading, automatic prop streaming, remote→host events, and a typed fallback.**
 
-`mf-bridge` replaces the copy-paste `moved_to_mf_*` wrapper pattern. Define once how a remote component should be mounted, and the bridge handles the full lifecycle: lazy load → mount in a dedicated DOM node → stream prop updates via DOM events → clean unmount.
+`mf-bridge` replaces the copy-paste `moved_to_mf_*` wrapper pattern. Define once how a remote component should be mounted, and the bridge handles the full lifecycle: lazy load → mount in a dedicated DOM node → stream prop updates via DOM events → emit events back to the host → clean unmount.
 
 Zero production dependencies. Works with any Module Federation setup.
 
@@ -117,6 +117,10 @@ No shared module scope. No global registry. No React context crossing bundle bou
 | Show **fallback** while loading | ✗ | ✅ | ✅ |
 | **Clean unmount** with listener cleanup | Manual | Manual | ✅ |
 | **Type-safe props** inferred from remote's export | ✗ | ✗ | ✅ |
+| **Remote→Host events** without shared globals | ✗ | ✗ | ✅ |
+| **Load status tracking** (`onStatusChange`) | ✗ | ✗ | ✅ |
+| **Retry** on transient failure (auto + manual) | ✗ | ✗ | ✅ |
+| **Timeout** per load attempt | ✗ | ✗ | ✅ |
 | Zero production dependencies | — | ✅ | ✅ |
 
 React portals render into a different DOM node but stay in the same React tree and bundle — they can't reach across Module Federation boundaries. `React.lazy` defers the import but still requires the component to live in the same bundle and React root.
@@ -219,7 +223,7 @@ export const register = createMFEntry(
 )
 ```
 
-Both callbacks receive `{ mountPointer }`. `onBeforeMount` also receives `props`.
+Both callbacks receive `{ mountPointer }`. `onBeforeMount` also receives `props`, `namespace`, and an `emit` function to push events to the host (see [Remote→Host events](#remoteto-host-events)).
 
 ---
 
@@ -244,6 +248,44 @@ The error boundary **resets automatically** on the next `propsChanged` event, so
 
 ---
 
+## Remote→Host events
+
+Remote components can push events back to the host shell — without shared module state. Use `emit` inside `createMFEntry` and `onEvent` on the host side.
+
+**Remote side** — call `emit(type, payload?)` from `onBeforeMount` or pass it into the component:
+
+```tsx
+// checkout-mf/src/entry.ts
+export const register = createMFEntry(
+  CheckoutWidget,
+  ({ emit }) => {
+    // Give the component a way to notify the host
+    CheckoutWidget.onOrderPlaced = (orderId: string) =>
+      emit('orderPlaced', { orderId })
+  },
+)
+```
+
+**Host side** — handle events via `onEvent`:
+
+```tsx
+<MFBridgeLazy
+  register={() => import('checkout/entry').then(m => m.register)}
+  props={{ orderId }}
+  onEvent={(type, payload) => {
+    if (type === 'orderPlaced') navigate('/confirmation')
+    if (type === 'cancelled')  navigate('/cart')
+  }}
+  fallback={<Spinner />}
+/>
+```
+
+Events travel over the same DOM `CustomEvent` channel as prop streaming — no shared globals, no React context crossing bundle boundaries.
+
+`onEvent` is also available on the synchronous `MFBridge` component.
+
+---
+
 ## Preloading for instant mount
 
 Call `preloadMF` as early as possible (on hover, on route prefetch, on app init) to start loading the remote bundle before the component renders. `MFBridgeLazy` reuses the already-started promise — no duplicate network request.
@@ -264,6 +306,18 @@ const checkoutLoader = () => import('checkout/entry').then(m => m.register)
 
 > **Note:** `preloadMF` uses the loader function reference as the cache key. Define the loader outside your component (or wrap with `useCallback`) so the reference is stable.
 
+To evict an entry from the cache (e.g. after a deploy or on user logout), use `clearPreloadCache`:
+
+```tsx
+import { clearPreloadCache } from '@mf-toolkit/mf-bridge'
+
+// Evict one remote — next preloadMF/render makes a fresh request
+clearPreloadCache(checkoutLoader)
+
+// Wipe all cached remotes at once
+clearPreloadCache()
+```
+
 ---
 
 ## Retry on load failure
@@ -277,11 +331,69 @@ Use `retryCount` and `retryDelay` to automatically retry a failed load — usefu
   fallback={<Spinner />}
   retryCount={3}        // up to 3 additional attempts after the first failure
   retryDelay={1000}     // wait 1 s between each retry
-  onError={(err) => { logger.error('checkout failed to load', err) }}
+  onError={(err, retry) => {
+    logger.error('checkout failed to load', err)
+    showToast('Failed to load module', { action: retry })
+  }}
 />
 ```
 
-Each retry bypasses the preload cache and calls the factory again with a fresh network request. When all attempts are exhausted, `onError` is called once and the component stays on `fallback`.
+Each automatic retry bypasses the preload cache and calls the factory again with a fresh network request. When all attempts are exhausted, `onError` is called once with the error **and a `retry` callback** — call it to trigger an additional manual load attempt (also bypasses cache):
+
+```tsx
+onError={(err, retry) => {
+  // Show a "Try again" button — clicking it calls retry()
+  setErrorState({ err, onRetry: retry })
+}}
+```
+
+The component stays on `fallback` until the manual retry succeeds.
+
+---
+
+## Load timeout
+
+Use `timeout` to set a per-attempt time limit. If a single load attempt doesn't resolve within the window, it's treated as a failure and the retry pipeline kicks in:
+
+```tsx
+<MFBridgeLazy
+  register={() => import('checkout/entry').then(m => m.register)}
+  props={{ orderId }}
+  timeout={5000}      // fail the attempt after 5 s
+  retryCount={2}      // then retry up to 2 more times
+  retryDelay={1000}
+  onError={(err, retry) => showRetryToast(retry)}
+  fallback={<Spinner />}
+/>
+```
+
+`timeout` is per-attempt — each retry gets a fresh window.
+
+---
+
+## Load status tracking
+
+`onStatusChange` gives a single callback that tracks all load state transitions in one place — useful for analytics, Redux, or a global loading indicator:
+
+```tsx
+<MFBridgeLazy
+  register={() => import('checkout/entry').then(m => m.register)}
+  props={{ orderId }}
+  onStatusChange={(status) => {
+    // 'loading' → 'ready'     on success
+    // 'loading' → 'error'     after all retries fail
+    // 'loading' → 'ready'     again after manual retry succeeds
+    dispatch({ type: 'MF_STATUS', remote: 'checkout', status })
+  }}
+  fallback={<Spinner />}
+/>
+```
+
+| Status | When |
+|---|---|
+| `'loading'` | At the start of every attempt cycle (initial load and each manual retry) |
+| `'ready'` | Module resolved and remote component mounted |
+| `'error'` | All attempts (including auto-retries) exhausted |
 
 ---
 
@@ -389,7 +501,12 @@ The `namespace` prop on `MFBridge`/`MFBridgeLazy` is forwarded to `register()` a
 ```typescript
 function createMFEntry<T extends ComponentType<any>>(
   Component: T,
-  onBeforeMount?: (opts: { mountPointer: HTMLElement; props: ComponentProps<T> }) => void,
+  onBeforeMount?: (opts: {
+    mountPointer: HTMLElement
+    props: ComponentProps<T>
+    namespace: string
+    emit: (type: string, payload?: unknown) => void
+  }) => void,
   onBeforeUnmount?: (opts: { mountPointer: HTMLElement }) => void,
   onError?: (err: Error) => void,
 ): RegisterFn<ComponentProps<T>>
@@ -398,7 +515,9 @@ function createMFEntry<T extends ComponentType<any>>(
 | Parameter | Type | Description |
 |---|---|---|
 | `Component` | `ComponentType<P>` | React component to expose to the host |
-| `onBeforeMount` | `(opts) => void` | Called once before `createRoot`. Use for DI setup. |
+| `onBeforeMount` | `(opts) => void` | Called once before `createRoot`. Use for DI setup and wiring `emit`. |
+| `onBeforeMount opts.namespace` | `string` | The CustomEvent namespace in use (matches the host's `namespace` prop). |
+| `onBeforeMount opts.emit` | `(type, payload?) => void` | Sends a custom event to the host. Received by the host via `onEvent`. |
 | `onBeforeUnmount` | `(opts) => void` | Called just before `root.unmount()`. Use to clean up DI. |
 | `onError` | `(err: Error) => void` | Called when the component throws during render. The mount point renders `null`; the boundary resets on the next `propsChanged`. |
 
@@ -432,10 +551,13 @@ function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>(props: {
   tagName?: string
   namespace?: string
   onLoad?: () => void
-  onError?: (err: unknown) => void
+  onError?: (err: unknown, retry: () => void) => void
+  onStatusChange?: (status: MFBridgeStatus) => void
+  onEvent?: (type: string, payload: unknown) => void
   debug?: boolean
   retryCount?: number
   retryDelay?: number
+  timeout?: number
 }): JSX.Element
 ```
 
@@ -447,10 +569,13 @@ function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>(props: {
 | `tagName` | `string` | `'mf-bridge'` | HTML tag for the mount-point element. |
 | `namespace` | `string` | `'mfbridge'` | CustomEvent namespace for prop streaming. |
 | `onLoad` | `() => void` | — | Called once the remote module resolves successfully. |
-| `onError` | `(err) => void` | — | Called after all load attempts fail. Component stays on `fallback`. |
+| `onError` | `(err, retry) => void` | — | Called after all auto-retries fail. Second arg is a callback to trigger a manual retry. |
+| `onStatusChange` | `(status: MFBridgeStatus) => void` | — | Called on every status transition: `'loading'` → `'ready'` or `'error'`. |
+| `onEvent` | `(type, payload) => void` | — | Called when the remote emits a custom event via `emit()`. |
 | `debug` | `boolean` | `false` | Enable `console.debug` logging (`load:start/retry/ok/error`). |
-| `retryCount` | `number` | `0` | Additional load attempts after the first failure. |
-| `retryDelay` | `number` | `0` | Milliseconds between retries. |
+| `retryCount` | `number` | `0` | Additional automatic load attempts after the first failure. |
+| `retryDelay` | `number` | `0` | Milliseconds between automatic retries. |
+| `timeout` | `number` | — | Per-attempt timeout in ms. Fires `onError`/retry if exceeded. |
 
 ---
 
@@ -465,6 +590,7 @@ function MFBridge<T extends RegisterFn<any>>(props: {
   tagName?: string
   namespace?: string
   debug?: boolean
+  onEvent?: (type: string, payload: unknown) => void
 }): JSX.Element
 ```
 
@@ -475,6 +601,7 @@ function MFBridge<T extends RegisterFn<any>>(props: {
 | `tagName` | `string` | `'mf-bridge'` | HTML tag used as the mount-point element. |
 | `namespace` | `string` | `'mfbridge'` | CustomEvent namespace for prop streaming. |
 | `debug` | `boolean` | `false` | Enable `console.debug` logging (`mount`, `propsChanged`, `unmount`). |
+| `onEvent` | `(type, payload) => void` | — | Called when the remote emits a custom event via `emit()`. |
 
 ---
 
@@ -487,6 +614,35 @@ function preloadMF<T extends RegisterFn<any>>(loader: () => Promise<T>): void
 ```
 
 Starts loading a remote module before `MFBridgeLazy` renders. Uses the loader reference as the cache key — `MFBridgeLazy` with the same reference reuses the in-flight promise. Calling `preloadMF` multiple times with the same reference is safe (no-op after the first call).
+
+---
+
+### `clearPreloadCache(loader?)` — cache eviction
+
+**Import:** `@mf-toolkit/mf-bridge`
+
+```typescript
+function clearPreloadCache(loader?: () => Promise<RegisterFn<any>>): void
+```
+
+Removes one or all entries from the preload cache.
+
+| Argument | Behaviour |
+|---|---|
+| `clearPreloadCache(loader)` | Evicts one entry. Next `preloadMF`/`MFBridgeLazy` render makes a fresh request. |
+| `clearPreloadCache()` | Clears the entire cache. |
+
+Typical use cases: force re-fetch after a deploy, clear on user logout, reset between tests.
+
+---
+
+### `MFBridgeStatus` — load status type
+
+```typescript
+type MFBridgeStatus = 'loading' | 'ready' | 'error'
+```
+
+The value passed to `onStatusChange`. Exported for use in typed state slices or analytics schemas.
 
 ---
 
@@ -713,7 +869,10 @@ export function Checkout({ orderId }: { orderId: string }) {
 | Remote module registry / caching | Separate package: `@mf-toolkit/mf-loader` |
 | Type-safe `importRemote` wrapper | Separate package: `@mf-toolkit/mf-loader` |
 | URL resolution / DEV port scanning | Separate package: `@mf-toolkit/mf-loader` |
-| `request/response` bidirectional RPC | Planned — two-way callback channel across bundles |
+| Remote→Host events (`emit` / `onEvent`) | ✅ Shipped in v0.2 |
+| Load status tracking (`onStatusChange`) | ✅ Shipped in v0.2 |
+| Manual retry callback in `onError` | ✅ Shipped in v0.2 |
+| Per-attempt load `timeout` | ✅ Shipped in v0.2 |
 | `iframe` transport mode | Planned — hard UI isolation between host and remote |
 
 ---
