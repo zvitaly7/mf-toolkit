@@ -763,3 +763,88 @@ describe('retry', () => {
     expect(screen.getByTestId('label').textContent).toBe('fresh')
   })
 })
+
+// ─── errorFallback ────────────────────────────────────────────────────────
+
+describe('errorFallback', () => {
+  afterEach(cleanup)
+
+  it('shows fallback while loading and errorFallback after failure', async () => {
+    let reject!: (err: Error) => void
+    const loader = () => new Promise<typeof labelRegister>((_, rej) => { reject = rej })
+
+    render(createElement(MFBridgeLazy, {
+      register: loader,
+      props: { text: 'x' },
+      fallback: createElement('span', { 'data-testid': 'fb-loading' }, 'loading'),
+      errorFallback: createElement('span', { 'data-testid': 'fb-error' }, 'failed'),
+    }))
+
+    expect(screen.getByTestId('fb-loading')).toBeTruthy()
+    expect(screen.queryByTestId('fb-error')).toBeNull()
+
+    await act(async () => { reject(new Error('load failed')) })
+
+    expect(screen.getByTestId('fb-error')).toBeTruthy()
+    expect(screen.queryByTestId('fb-loading')).toBeNull()
+    expect(screen.queryByTestId('label')).toBeNull()
+  })
+
+  it('falls back to fallback when errorFallback is not provided', async () => {
+    const loader = () => Promise.reject(new Error('fail'))
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'x' },
+        fallback: createElement('span', { 'data-testid': 'fb' }, 'fallback'),
+      }))
+    })
+
+    expect(screen.getByTestId('fb')).toBeTruthy()
+  })
+
+  it('shows fallback (not errorFallback) while loading succeeds', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'ok' },
+        fallback: createElement('span', { 'data-testid': 'fb-loading' }, 'loading'),
+        errorFallback: createElement('span', { 'data-testid': 'fb-error' }, 'failed'),
+      }))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('ok')
+    expect(screen.queryByTestId('fb-loading')).toBeNull()
+    expect(screen.queryByTestId('fb-error')).toBeNull()
+  })
+
+  it('switches back to loading fallback after manual retry', async () => {
+    let attempt = 0
+    const loader = () => {
+      attempt++
+      return attempt === 1 ? Promise.reject(new Error('fail')) : Promise.resolve(labelRegister)
+    }
+    let retryFn!: () => void
+    const onError = (_err: unknown, retry: () => void) => { retryFn = retry }
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'ok' },
+        fallback: createElement('span', { 'data-testid': 'fb-loading' }, 'loading'),
+        errorFallback: createElement('span', { 'data-testid': 'fb-error' }, 'failed'),
+        onError,
+      }))
+    })
+
+    expect(screen.getByTestId('fb-error')).toBeTruthy()
+
+    await act(async () => { retryFn() })
+
+    expect(screen.getByTestId('label').textContent).toBe('ok')
+    expect(screen.queryByTestId('fb-error')).toBeNull()
+  })
+})

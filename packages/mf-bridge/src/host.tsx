@@ -193,6 +193,53 @@ export function MFBridge<T extends RegisterFn<any>>({
 /** Status reported by {@link MFBridgeLazyProps.onStatusChange}. */
 export type MFBridgeStatus = 'loading' | 'ready' | 'error'
 
+/**
+ * Typed `onEvent` handler for the host side.
+ *
+ * Define an event map on the remote side and use this type on the host to get
+ * fully-typed `type` and `payload` in the handler without changing component
+ * signatures.
+ *
+ * @example
+ * // Shared types (e.g. in a shared-types package)
+ * type CheckoutEvents = {
+ *   orderPlaced: { orderId: string }
+ *   cancelled: void
+ * }
+ *
+ * // Host side
+ * const handleEvent: TypedOnEvent<CheckoutEvents> = (type, payload) => {
+ *   if (type === 'orderPlaced') navigate(`/confirmation/${payload.orderId}`)
+ *   if (type === 'cancelled') navigate('/cart')
+ * }
+ *
+ * <MFBridgeLazy ... onEvent={handleEvent} />
+ */
+export type TypedOnEvent<Events extends Record<string, unknown>> =
+  <K extends keyof Events & string>(type: K, payload: Events[K]) => void
+
+/**
+ * Typed `emit` function for the remote side.
+ *
+ * Use it to annotate the `emit` argument received in `onBeforeMount` so calls
+ * to `emit` are validated against your event map at compile time.
+ *
+ * @example
+ * // Shared types
+ * type CheckoutEvents = {
+ *   orderPlaced: { orderId: string }
+ *   cancelled: void
+ * }
+ *
+ * // Remote side
+ * createMFEntry(CheckoutWidget, ({ emit }) => {
+ *   const typedEmit = emit as TypedEmit<CheckoutEvents>
+ *   CheckoutWidget.onOrderPlaced = (id) => typedEmit('orderPlaced', { orderId: id })
+ * })
+ */
+export type TypedEmit<Events extends Record<string, unknown>> =
+  <K extends keyof Events & string>(type: K, payload?: Events[K]) => void
+
 export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   /**
    * Async factory that resolves to a `RegisterFn`.
@@ -207,6 +254,19 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   props: MFLazyProps<T>
   /** Rendered while the remote module is loading or if loading fails. */
   fallback?: ReactNode
+  /**
+   * Rendered when all load attempts fail. Overrides `fallback` in the error
+   * state, letting you show a different UI for "loading" vs "failed".
+   * Falls back to `fallback` if not provided.
+   *
+   * @example
+   * <MFBridgeLazy
+   *   fallback={<Spinner />}
+   *   errorFallback={<ErrorBanner onRetry={retry} />}
+   *   ...
+   * />
+   */
+  errorFallback?: ReactNode
   /** HTML tag used as the mount-point element. Defaults to `"mf-bridge"`. */
   tagName?: string
   /**
@@ -312,6 +372,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   register,
   props,
   fallback = null,
+  errorFallback,
   tagName = 'mf-bridge',
   namespace = DEFAULT_NS,
   onError,
@@ -451,7 +512,8 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     }
   }, [register, retryKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (failed || !registerFn) return createElement(() => fallback as React.JSX.Element)
+  if (failed) return createElement(() => (errorFallback ?? fallback) as React.JSX.Element)
+  if (!registerFn) return createElement(() => fallback as React.JSX.Element)
 
   return createElement(MFBridge, {
     register: registerFn,
