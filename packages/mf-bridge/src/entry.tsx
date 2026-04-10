@@ -40,8 +40,9 @@ class MFEntryErrorBoundary extends Component<BoundaryProps, { failed: boolean }>
  * @param Component       The React component to expose.
  * @param onBeforeMount   Optional hook called once before the first render.
  *   Use it for DI / service injection that must happen before the component
- *   sees its props. Receives `namespace` and an `emit` function to push events
- *   to the host shell via `onEvent`.
+ *   sees its props. Receives `namespace`, an `emit` function to push events
+ *   to the host shell via `onEvent`, and an `onCommand` function to subscribe
+ *   to imperative commands sent by the host via `commandRef`.
  * @param onBeforeUnmount Optional hook called just before the component is
  *   unmounted. Use it to clean up DI registrations or other side-effects
  *   set up in `onBeforeMount`.
@@ -54,9 +55,12 @@ class MFEntryErrorBoundary extends Component<BoundaryProps, { failed: boolean }>
  * // mf/checkout/entry.ts  (exposed via Module Federation)
  * export const register = createMFEntry(
  *   CheckoutWidget,
- *   ({ props, emit }) => {
+ *   ({ props, emit, onCommand }) => {
  *     container.set(props.services)
  *     CheckoutWidget.onOrderPlaced = (id) => emit('orderPlaced', { id })
+ *     onCommand((type) => {
+ *       if (type === 'reset') CheckoutWidget.reset()
+ *     })
  *   },
  *   ({ mountPointer }) => { container.reset() },
  *   (err) => { logger.error('checkout crashed', err) },
@@ -71,6 +75,18 @@ export function createMFEntry<T extends ComponentType<any>>(
     namespace: string
     /** Emit a custom event to the host shell. The host receives it via `onEvent`. */
     emit: (type: string, payload?: unknown) => void
+    /**
+     * Subscribe to imperative commands sent by the host via `commandRef`.
+     * Returns an unsubscribe function. Subscriptions are automatically cleaned
+     * up on unmount even if you don't call the returned unsubscribe function.
+     *
+     * @example
+     * onCommand((type, payload) => {
+     *   if (type === 'reset') formRef.current?.reset()
+     *   if (type === 'focus') inputRef.current?.focus()
+     * })
+     */
+    onCommand: (handler: (type: string, payload: unknown) => void) => () => void
   }) => void,
   onBeforeUnmount?: (opts: { mountPointer: HTMLElement }) => void,
   onError?: (err: Error) => void,
@@ -79,12 +95,23 @@ export function createMFEntry<T extends ComponentType<any>>(
     // Guard against accidental calls in SSR / non-DOM environments
     if (typeof document === 'undefined') return () => {}
 
-    // Create the bus before onBeforeMount so emit is available there.
+    // Create the bus before onBeforeMount so emit and onCommand are available there.
     const bus = new DOMEventBus(mountPointer, namespace)
     const emit = (type: string, payload?: unknown): void =>
       bus.send('event', { type, payload })
 
-    onBeforeMount?.({ mountPointer, props, namespace, emit })
+    // Track command subscriptions so they are auto-cleaned up on unmount.
+    const commandUnsubs: Array<() => void> = []
+    const onCommand = (handler: (type: string, payload: unknown) => void): () => void => {
+      const unsub = bus.on<{ type: string; payload: unknown }>(
+        'command',
+        ({ type, payload }) => handler(type, payload),
+      )
+      commandUnsubs.push(unsub)
+      return unsub
+    }
+
+    onBeforeMount?.({ mountPointer, props, namespace, emit, onCommand })
 
     // errorKey increments on every propsChanged to reset the boundary so a
     // recovered component can render again after a previous crash.
@@ -108,6 +135,7 @@ export function createMFEntry<T extends ComponentType<any>>(
     return () => {
       onBeforeUnmount?.({ mountPointer })
       unsubscribe()
+      commandUnsubs.forEach((fn) => fn())
       root.unmount()
     }
   }

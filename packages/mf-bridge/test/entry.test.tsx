@@ -235,6 +235,43 @@ describe('createMFEntry', () => {
     vi.restoreAllMocks()
   })
 
+  it('provides onCommand in onBeforeMount that receives host-sent commands', async () => {
+    const received: Array<{ type: string; payload: unknown }> = []
+
+    const register = createMFEntry(Counter, ({ onCommand }) => {
+      onCommand((type, payload) => received.push({ type, payload }))
+    })
+
+    await act(async () => {
+      register({ mountPointer: mountPoint, props: { count: 0 } })
+    })
+
+    const bus = new DOMEventBus(mountPoint, 'mfbridge')
+    act(() => { bus.send('command', { type: 'reset', payload: { keepEmail: true } }) })
+
+    expect(received).toEqual([{ type: 'reset', payload: { keepEmail: true } }])
+  })
+
+  it('onCommand uses the correct namespace', async () => {
+    const defaultReceived: unknown[] = []
+    const customReceived: unknown[] = []
+
+    const register = createMFEntry(Counter, ({ onCommand }) => {
+      onCommand((type) => customReceived.push(type))
+    })
+
+    await act(async () => {
+      register({ mountPointer: mountPoint, props: { count: 0 }, namespace: 'myns' })
+    })
+
+    new DOMEventBus(mountPoint, 'mfbridge').on('command', (d) => defaultReceived.push(d))
+    const bus = new DOMEventBus(mountPoint, 'myns')
+    act(() => { bus.send('command', { type: 'ping', payload: undefined }) })
+
+    expect(defaultReceived).toHaveLength(0)
+    expect(customReceived).toEqual(['ping'])
+  })
+
   it('uses a custom namespace when provided', async () => {
     const register = createMFEntry(Counter)
 
