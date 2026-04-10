@@ -111,6 +111,19 @@ export interface MFBridgeProps<T extends RegisterFn<any>> {
    * />
    */
   onEvent?: (type: string, payload: unknown) => void
+  /**
+   * HTML attributes forwarded to the mount-point element.
+   * Use to set `className`, `style`, `id`, `data-*`, ARIA attributes, etc.
+   * The `ref` is managed internally and cannot be overridden here.
+   *
+   * @example
+   * <MFBridge
+   *   register={checkoutRegister}
+   *   props={{ orderId }}
+   *   containerProps={{ className: 'checkout-slot', style: { minHeight: 200 } }}
+   * />
+   */
+  containerProps?: Omit<React.HTMLAttributes<HTMLElement>, 'ref'>
 }
 
 /**
@@ -135,6 +148,7 @@ export function MFBridge<T extends RegisterFn<any>>({
   namespace = DEFAULT_NS,
   debug = false,
   onEvent,
+  containerProps,
 }: MFBridgeProps<T>): React.JSX.Element {
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
@@ -185,7 +199,7 @@ export function MFBridge<T extends RegisterFn<any>>({
     busRef.current?.send('propsChanged', props)
   }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return createElement(tagName, { ref: containerRef }) as React.JSX.Element
+  return createElement(tagName, { ...containerProps, ref: containerRef }) as React.JSX.Element
 }
 
 // ─── Lazy bridge ─────────────────────────────────────────────────────────────
@@ -345,6 +359,19 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * />
    */
   onEvent?: (type: string, payload: unknown) => void
+  /**
+   * HTML attributes forwarded to the mount-point element.
+   * Use to set `className`, `style`, `id`, `data-*`, ARIA attributes, etc.
+   * Forwarded to the inner `MFBridge` once the remote module is loaded.
+   *
+   * @example
+   * <MFBridgeLazy
+   *   register={checkoutLoader}
+   *   props={{ orderId }}
+   *   containerProps={{ className: 'checkout-slot', 'aria-label': 'Checkout' }}
+   * />
+   */
+  containerProps?: Omit<React.HTMLAttributes<HTMLElement>, 'ref'>
 }
 
 /**
@@ -383,6 +410,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   onStatusChange,
   timeout,
   onEvent,
+  containerProps,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
@@ -522,5 +550,6 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     namespace,
     debug,
     onEvent,
+    containerProps,
   })
 }
