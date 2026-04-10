@@ -922,3 +922,114 @@ describe('containerProps', () => {
     expect(screen.getByTestId('label').textContent).toBe('hi')
   })
 })
+
+// ─── commandRef (host→remote imperative commands) ────────────────────────────
+
+describe('commandRef', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — commandRef is populated after mount', async () => {
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        commandRef: cmdRef,
+      }))
+    })
+
+    expect(typeof cmdRef.current).toBe('function')
+  })
+
+  it('MFBridge — commandRef.current is null after unmount', async () => {
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    const { unmount } = render(createElement(MFBridge, {
+      register: labelRegister,
+      props: { text: 'hi' },
+      commandRef: cmdRef,
+    }))
+
+    await act(async () => {})
+    expect(cmdRef.current).not.toBeNull()
+
+    act(() => { unmount() })
+    expect(cmdRef.current).toBeNull()
+  })
+
+  it('MFBridge — commandRef.send dispatches a command received by onCommand in createMFEntry', async () => {
+    const received: Array<{ type: string; payload: unknown }> = []
+
+    const register = createMFEntry(
+      Label,
+      ({ onCommand }) => {
+        onCommand((type, payload) => received.push({ type, payload }))
+      },
+    )
+
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register,
+        props: { text: 'hi' },
+        commandRef: cmdRef,
+      }))
+    })
+
+    act(() => { cmdRef.current?.('reset', { keepEmail: true }) })
+    act(() => { cmdRef.current?.('focus') })
+
+    expect(received).toEqual([
+      { type: 'reset', payload: { keepEmail: true } },
+      { type: 'focus', payload: undefined },
+    ])
+  })
+
+  it('MFBridgeLazy — commandRef is populated after lazy load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        commandRef: cmdRef,
+      }))
+    })
+
+    expect(typeof cmdRef.current).toBe('function')
+  })
+
+  it('onCommand subscriptions are cleaned up on unmount', async () => {
+    const received: string[] = []
+
+    const register = createMFEntry(
+      Label,
+      ({ onCommand }) => {
+        onCommand((type) => received.push(type))
+      },
+    )
+
+    const mountPoint = document.createElement('div')
+    document.body.appendChild(mountPoint)
+
+    let unmountFn!: () => void
+    await act(async () => {
+      unmountFn = register({ mountPointer: mountPoint, props: { text: 'hi' } })
+    })
+
+    // Verify subscription is active
+    const bus = new DOMEventBus(mountPoint, 'mfbridge')
+    act(() => { bus.send('command', { type: 'ping', payload: undefined }) })
+    expect(received).toHaveLength(1)
+
+    // Unmount — subscription must be cleaned up
+    act(() => { unmountFn() })
+    act(() => { bus.send('command', { type: 'ping', payload: undefined }) })
+    expect(received).toHaveLength(1) // no new entries
+
+    document.body.removeChild(mountPoint)
+  })
+})

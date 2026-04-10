@@ -124,6 +124,21 @@ export interface MFBridgeProps<T extends RegisterFn<any>> {
    * />
    */
   containerProps?: Omit<React.HTMLAttributes<HTMLElement>, 'ref'>
+  /**
+   * Mutable ref populated with a `send(type, payload?)` function once the
+   * remote component is mounted. Use it to dispatch imperative commands to the
+   * remote from the host. The ref is set to `null` on unmount.
+   *
+   * The remote receives commands by calling `onCommand(handler)` inside
+   * `onBeforeMount` (provided by `createMFEntry`).
+   *
+   * @example
+   * const cmdRef = useRef<(type: string, payload?: unknown) => void>(null)
+   * <MFBridge register={checkoutRegister} props={...} commandRef={cmdRef} />
+   * // later:
+   * cmdRef.current?.('resetForm', { keepEmail: true })
+   */
+  commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
 }
 
 /**
@@ -149,6 +164,7 @@ export function MFBridge<T extends RegisterFn<any>>({
   debug = false,
   onEvent,
   containerProps,
+  commandRef,
 }: MFBridgeProps<T>): React.JSX.Element {
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
@@ -158,6 +174,8 @@ export function MFBridge<T extends RegisterFn<any>>({
   debugRef.current = debug
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
+  const commandRefRef = useRef(commandRef)
+  commandRefRef.current = commandRef
 
   // Re-run when register or namespace changes: tear down the old remote and
   // mount the new one. isFirstRender is reset so the props-streaming effect
@@ -170,6 +188,12 @@ export function MFBridge<T extends RegisterFn<any>>({
     const bus = new DOMEventBus(el, namespace)
     busRef.current = bus
 
+    // Expose a send function so the host can dispatch commands to the remote.
+    if (commandRefRef.current) {
+      commandRefRef.current.current = (type, payload) =>
+        bus.send('command', { type, payload })
+    }
+
     dbg(namespace, debugRef.current, 'mount', { props })
     unmountRef.current = register({ mountPointer: el, props, namespace })
 
@@ -181,6 +205,7 @@ export function MFBridge<T extends RegisterFn<any>>({
     return () => {
       dbg(namespace, debugRef.current, 'unmount')
       unsubEvent()
+      if (commandRefRef.current) commandRefRef.current.current = null
       busRef.current = null
       unmountRef.current?.()
       unmountRef.current = null
@@ -372,6 +397,18 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * />
    */
   containerProps?: Omit<React.HTMLAttributes<HTMLElement>, 'ref'>
+  /**
+   * Mutable ref populated with a `send(type, payload?)` function once the
+   * remote module has loaded and the component is mounted.
+   * Forwarded to the inner `MFBridge`. Set to `null` while loading and on unmount.
+   *
+   * @example
+   * const cmdRef = useRef<(type: string, payload?: unknown) => void>(null)
+   * <MFBridgeLazy register={checkoutLoader} props={...} commandRef={cmdRef} />
+   * // after load:
+   * cmdRef.current?.('resetForm')
+   */
+  commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
 }
 
 /**
@@ -411,6 +448,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   timeout,
   onEvent,
   containerProps,
+  commandRef,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
@@ -551,5 +589,6 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     debug,
     onEvent,
     containerProps,
+    commandRef,
   })
 }
