@@ -58,7 +58,69 @@ describe('createMFEntry', () => {
     })
 
     expect(onBeforeMount).toHaveBeenCalledOnce()
-    expect(onBeforeMount).toHaveBeenCalledWith({ mountPointer: mountPoint, props: { count: 0 } })
+    expect(onBeforeMount).toHaveBeenCalledWith(
+      expect.objectContaining({ mountPointer: mountPoint, props: { count: 0 } }),
+    )
+  })
+
+  it('passes namespace to onBeforeMount', async () => {
+    let receivedNs: string | undefined
+    const register = createMFEntry(Counter, ({ namespace }) => { receivedNs = namespace })
+
+    await act(async () => {
+      register({ mountPointer: mountPoint, props: { count: 0 }, namespace: 'custom-ns' })
+    })
+
+    expect(receivedNs).toBe('custom-ns')
+  })
+
+  it('passes default namespace to onBeforeMount when none provided', async () => {
+    let receivedNs: string | undefined
+    const register = createMFEntry(Counter, ({ namespace }) => { receivedNs = namespace })
+
+    await act(async () => {
+      register({ mountPointer: mountPoint, props: { count: 0 } })
+    })
+
+    expect(receivedNs).toBe('mfbridge')
+  })
+
+  it('provides emit in onBeforeMount that dispatches events to the host', async () => {
+    let emitFn!: (type: string, payload?: unknown) => void
+    const register = createMFEntry(Counter, ({ emit }) => { emitFn = emit })
+
+    await act(async () => {
+      register({ mountPointer: mountPoint, props: { count: 0 } })
+    })
+
+    const received: Array<{ type: string; payload: unknown }> = []
+    const hostBus = new DOMEventBus(mountPoint, 'mfbridge')
+    hostBus.on<{ type: string; payload: unknown }>('event', (detail) => received.push(detail))
+
+    emitFn('clicked', { x: 1 })
+
+    expect(received).toEqual([{ type: 'clicked', payload: { x: 1 } }])
+  })
+
+  it('emit uses the correct namespace when a custom one is provided', async () => {
+    let emitFn!: (type: string, payload?: unknown) => void
+    const register = createMFEntry(Counter, ({ emit }) => { emitFn = emit })
+
+    await act(async () => {
+      register({ mountPointer: mountPoint, props: { count: 0 }, namespace: 'myns' })
+    })
+
+    const defaultReceived: unknown[] = []
+    const customReceived: Array<{ type: string }> = []
+
+    new DOMEventBus(mountPoint, 'mfbridge').on<{ type: string }>('event', (d) => defaultReceived.push(d))
+    new DOMEventBus(mountPoint, 'myns').on<{ type: string }>('event', (d) => customReceived.push(d))
+
+    emitFn('ping')
+
+    expect(defaultReceived).toHaveLength(0)
+    expect(customReceived).toHaveLength(1)
+    expect(customReceived[0].type).toBe('ping')
   })
 
   it('unmounts cleanly and stops listening', async () => {

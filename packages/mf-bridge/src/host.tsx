@@ -1,5 +1,6 @@
 import {
   createElement,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -70,6 +71,20 @@ export interface MFBridgeProps<T extends RegisterFn<any>> {
    * Safe to leave in production — gated behind this flag.
    */
   debug?: boolean
+  /**
+   * Called when the remote component emits a custom event via `emit(type, payload)`.
+   * Enables type-safe remote→host communication without shared module state.
+   *
+   * @example
+   * <MFBridge
+   *   register={checkoutRegister}
+   *   props={{ orderId }}
+   *   onEvent={(type, payload) => {
+   *     if (type === 'orderPlaced') navigate('/confirmation')
+   *   }}
+   * />
+   */
+  onEvent?: (type: string, payload: unknown) => void
 }
 
 /**
@@ -93,6 +108,7 @@ export function MFBridge<T extends RegisterFn<any>>({
   tagName = 'mf-bridge',
   namespace = DEFAULT_NS,
   debug = false,
+  onEvent,
 }: MFBridgeProps<T>): React.JSX.Element {
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
@@ -100,6 +116,8 @@ export function MFBridge<T extends RegisterFn<any>>({
   const isFirstRender = useRef(true)
   const debugRef = useRef(debug)
   debugRef.current = debug
+  const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
 
   // Re-run when register or namespace changes: tear down the old remote and
   // mount the new one. isFirstRender is reset so the props-streaming effect
@@ -115,8 +133,14 @@ export function MFBridge<T extends RegisterFn<any>>({
     dbg(namespace, debugRef.current, 'mount', { props })
     unmountRef.current = register({ mountPointer: el, props, namespace })
 
+    // Subscribe to remote-emitted events forwarded by createMFEntry's emit().
+    const unsubEvent = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
+      onEventRef.current?.(type, payload)
+    })
+
     return () => {
       dbg(namespace, debugRef.current, 'unmount')
+      unsubEvent()
       busRef.current = null
       unmountRef.current?.()
       unmountRef.current = null
@@ -140,6 +164,9 @@ export function MFBridge<T extends RegisterFn<any>>({
 
 // ─── Lazy bridge ─────────────────────────────────────────────────────────────
 
+/** Status reported by {@link MFBridgeLazyProps.onStatusChange}. */
+export type MFBridgeStatus = 'loading' | 'ready' | 'error'
+
 export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   /**
    * Async factory that resolves to a `RegisterFn`.
@@ -162,10 +189,17 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    */
   namespace?: string
   /**
-   * Called when the `register` factory rejects (e.g. network error, missing chunk).
-   * The component stays on `fallback` when this happens.
+   * Called when all load attempts fail (including auto-retries).
+   * The second argument is a `retry` function — call it to trigger a fresh
+   * load attempt (bypasses the preload cache).
+   *
+   * @example
+   * onError={(err, retry) => {
+   *   logger.error(err)
+   *   showToast('Failed to load module', { action: retry })
+   * }}
    */
-  onError?: (err: unknown) => void
+  onError?: (err: unknown, retry: () => void) => void
   /** Called once the remote module has loaded and is ready to mount. */
   onLoad?: () => void
   /**
@@ -188,6 +222,43 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * Has no effect when `retryCount` is `0`.
    */
   retryDelay?: number
+  /**
+   * Called whenever the load status changes:
+   * - `'loading'` — module fetch started (fires at the start of every attempt cycle).
+   * - `'ready'`   — module loaded and remote component mounted.
+   * - `'error'`   — all attempts (including auto-retries) failed.
+   *
+   * @example
+   * <MFBridgeLazy
+   *   onStatusChange={(s) => dispatch({ type: 'MF_STATUS', status: s })}
+   *   ...
+   * />
+   */
+  onStatusChange?: (status: MFBridgeStatus) => void
+  /**
+   * Per-attempt load timeout in milliseconds. If a single attempt does not
+   * resolve within this window it is treated as a failure and the retry logic
+   * kicks in (if `retryCount > 0`).
+   * Defaults to `undefined` (no timeout).
+   *
+   * @example
+   * // Fail fast after 5 s, then retry once
+   * <MFBridgeLazy timeout={5000} retryCount={1} ... />
+   */
+  timeout?: number
+  /**
+   * Called when the remote component emits a custom event via `emit(type, payload)`.
+   * Forwarded to the inner `MFBridge` once the remote module is loaded.
+   *
+   * @example
+   * <MFBridgeLazy
+   *   onEvent={(type, payload) => {
+   *     if (type === 'orderPlaced') navigate('/confirmation')
+   *   }}
+   *   ...
+   * />
+   */
+  onEvent?: (type: string, payload: unknown) => void
 }
 
 /**
@@ -207,6 +278,8 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
  *   register={() => import('./mf-checkout').then(m => m.register)}
  *   props={{ orderId, services }}
  *   fallback={<LocalCheckout orderId={orderId} />}
+ *   onError={(err, retry) => showRetryToast(retry)}
+ *   onStatusChange={(s) => setMFStatus(s)}
  * />
  */
 export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
@@ -220,9 +293,22 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   debug = false,
   retryCount = 0,
   retryDelay = 0,
+  onStatusChange,
+  timeout,
+  onEvent,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
+  // Incremented by the user-facing retry callback to trigger a fresh load cycle.
+  const [retryKey, setRetryKey] = useState(0)
+
+  // Stable retry callback exposed to onError. Resets state and triggers a
+  // fresh load by incrementing retryKey (which is in effect deps).
+  const retry = useCallback(() => {
+    setFailed(false)
+    setRegisterFn(null)
+    setRetryKey((k) => k + 1)
+  }, [])
 
   // Keep callbacks and config in refs so changing them never triggers a reload.
   const onErrorRef = useRef(onError)
@@ -235,31 +321,59 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   retryCountRef.current = retryCount
   const retryDelayRef = useRef(retryDelay)
   retryDelayRef.current = retryDelay
+  const onStatusChangeRef = useRef(onStatusChange)
+  onStatusChangeRef.current = onStatusChange
+  const timeoutRef = useRef(timeout)
+  timeoutRef.current = timeout
+  const retryRef = useRef(retry)
+  retryRef.current = retry
 
-  // Re-run whenever the factory reference changes: reset to loading state and
-  // fetch the new remote. If preloadMF was called with the same loader, reuse
-  // the in-flight/resolved promise — no second network request.
-  // On failure, retries up to retryCount times (bypassing cache on each retry).
-  // Cancellation prevents stale resolves from a previous factory from
-  // overwriting state.
+  // Re-run whenever the factory reference or retryKey changes: reset to loading
+  // state and fetch the new/retried remote.
+  // Cancellation prevents stale resolves from overwriting state.
   useEffect(() => {
     let cancelled = false
     let attempt = 0
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let loadTimeoutId: ReturnType<typeof setTimeout> | null = null
+    let retryTimeoutId: ReturnType<typeof setTimeout> | null = null
 
     setRegisterFn(null)
     setFailed(false)
 
     const ns = namespace
 
+    onStatusChangeRef.current?.('loading')
+
+    function handleFailure(err: unknown): void {
+      if (cancelled) return
+      const maxAttempts = 1 + retryCountRef.current
+      if (attempt < maxAttempts) {
+        const remaining = maxAttempts - attempt
+        dbg(ns, debugRef.current, 'load:retry', { attempt, remaining })
+        const delay = retryDelayRef.current
+        if (delay > 0) {
+          retryTimeoutId = setTimeout(tryLoad, delay)
+        } else {
+          // Use a microtask to avoid unbounded synchronous recursion
+          Promise.resolve().then(() => { if (!cancelled) tryLoad() })
+        }
+      } else {
+        dbg(ns, debugRef.current, 'load:error', err)
+        setFailed(true)
+        onStatusChangeRef.current?.('error')
+        onErrorRef.current?.(err, retryRef.current)
+      }
+    }
+
     function tryLoad(): void {
       attempt++
+      let settled = false
       dbg(ns, debugRef.current, 'load:start', ...(attempt > 1 ? [{ attempt }] : []))
 
-      // First attempt: use preloaded promise if available.
-      // Subsequent attempts: bypass cache — the previous promise already failed.
+      // First attempt with no manual retry: use preloaded promise if available.
+      // Any other case (auto-retry or manual retry via retryKey): bypass cache.
       let promise: Promise<RegisterFn<any>>
-      if (attempt === 1) {
+      if (attempt === 1 && retryKey === 0) {
         const cached = preloadCache.get(register)
         if (cached) {
           promise = cached
@@ -272,32 +386,33 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
         promise = register() as Promise<RegisterFn<any>>
       }
 
+      // Per-attempt timeout: treat as failure when the window elapses.
+      const timeoutMs = timeoutRef.current
+      if (timeoutMs && timeoutMs > 0) {
+        loadTimeoutId = setTimeout(() => {
+          if (!settled && !cancelled) {
+            settled = true
+            loadTimeoutId = null
+            handleFailure(new Error(`mf-bridge: load timed out after ${timeoutMs}ms`))
+          }
+        }, timeoutMs)
+      }
+
       promise
         .then((fn) => {
-          if (!cancelled) {
-            dbg(ns, debugRef.current, 'load:ok')
-            setRegisterFn(() => fn)
-            onLoadRef.current?.()
-          }
+          if (settled || cancelled) return
+          settled = true
+          if (loadTimeoutId !== null) { clearTimeout(loadTimeoutId); loadTimeoutId = null }
+          dbg(ns, debugRef.current, 'load:ok')
+          setRegisterFn(() => fn)
+          onStatusChangeRef.current?.('ready')
+          onLoadRef.current?.()
         })
         .catch((err: unknown) => {
-          if (cancelled) return
-          const maxAttempts = 1 + retryCountRef.current
-          if (attempt < maxAttempts) {
-            const remaining = maxAttempts - attempt
-            dbg(ns, debugRef.current, 'load:retry', { attempt, remaining })
-            const delay = retryDelayRef.current
-            if (delay > 0) {
-              timeoutId = setTimeout(tryLoad, delay)
-            } else {
-              // Use a microtask to avoid unbounded synchronous recursion
-              Promise.resolve().then(() => { if (!cancelled) tryLoad() })
-            }
-          } else {
-            dbg(ns, debugRef.current, 'load:error', err)
-            setFailed(true)
-            onErrorRef.current?.(err)
-          }
+          if (settled || cancelled) return
+          settled = true
+          if (loadTimeoutId !== null) { clearTimeout(loadTimeoutId); loadTimeoutId = null }
+          handleFailure(err)
         })
     }
 
@@ -305,9 +420,10 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
 
     return () => {
       cancelled = true
-      if (timeoutId !== null) clearTimeout(timeoutId)
+      if (loadTimeoutId !== null) clearTimeout(loadTimeoutId)
+      if (retryTimeoutId !== null) clearTimeout(retryTimeoutId)
     }
-  }, [register]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [register, retryKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (failed || !registerFn) return createElement(() => fallback as React.JSX.Element)
 
@@ -317,5 +433,6 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     tagName,
     namespace,
     debug,
+    onEvent,
   })
 }
