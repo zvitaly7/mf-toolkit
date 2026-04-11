@@ -153,6 +153,19 @@ export interface MFBridgeProps<T extends RegisterFn<any>> {
    * mountRef.current?.getBoundingClientRect()
    */
   mountRef?: { current: HTMLElement | null }
+  /**
+   * When `true`, attaches a Shadow DOM to the mount-point element and renders
+   * the remote component inside it. Provides native CSS isolation — host styles
+   * do not bleed into the MF and vice versa.
+   *
+   * The shadow root (mode `"open"`) is passed to `createMFEntry`'s
+   * `onBeforeMount` so the remote can inject its own styles via
+   * `adoptedStyleSheets` or a `<style>` element.
+   *
+   * @example
+   * <MFBridge register={checkoutRegister} props={...} shadowDom />
+   */
+  shadowDom?: boolean
 }
 
 /**
@@ -180,6 +193,7 @@ export function MFBridge<T extends RegisterFn<any>>({
   containerProps,
   commandRef,
   mountRef,
+  shadowDom = false,
 }: MFBridgeProps<T>): React.JSX.Element {
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
@@ -193,6 +207,8 @@ export function MFBridge<T extends RegisterFn<any>>({
   commandRefRef.current = commandRef
   const mountRefRef = useRef(mountRef)
   mountRefRef.current = mountRef
+  const shadowDomRef = useRef(shadowDom)
+  shadowDomRef.current = shadowDom
 
   // Re-run when register or namespace changes: tear down the old remote and
   // mount the new one. isFirstRender is reset so the props-streaming effect
@@ -214,8 +230,14 @@ export function MFBridge<T extends RegisterFn<any>>({
         bus.send('command', { type, payload })
     }
 
-    dbg(namespace, debugRef.current, 'mount', { props })
-    unmountRef.current = register({ mountPointer: el, props, namespace })
+    // Attach a shadow root for CSS isolation when requested.
+    // Re-use an existing shadow root (e.g. after StrictMode double-invoke).
+    const shadowRoot = shadowDomRef.current
+      ? (el.shadowRoot ?? el.attachShadow({ mode: 'open' }))
+      : undefined
+
+    dbg(namespace, debugRef.current, 'mount', { props, shadowDom: shadowDomRef.current })
+    unmountRef.current = register({ mountPointer: el, shadowRoot, props, namespace })
 
     // Subscribe to remote-emitted events forwarded by createMFEntry's emit().
     const unsubEvent = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
@@ -440,6 +462,14 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * <MFBridgeLazy register={checkoutLoader} props={...} mountRef={mountRef} />
    */
   mountRef?: { current: HTMLElement | null }
+  /**
+   * When `true`, renders the remote component inside a Shadow DOM for CSS isolation.
+   * Forwarded to the inner `MFBridge`.
+   *
+   * @example
+   * <MFBridgeLazy register={checkoutLoader} props={...} shadowDom />
+   */
+  shadowDom?: boolean
 }
 
 /**
@@ -481,6 +511,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   containerProps,
   commandRef,
   mountRef,
+  shadowDom,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
@@ -623,6 +654,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     containerProps,
     commandRef,
     mountRef,
+    shadowDom,
   })
 }
 
