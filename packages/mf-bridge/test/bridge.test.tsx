@@ -3,7 +3,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { createElement, StrictMode, useRef, useState } from 'react'
 import { createMFEntry } from '../src/entry.js'
 import { DOMEventBus } from '../src/dom-event-bus.js'
-import { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache } from '../src/host.js'
+import { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache, forwardHostStyles } from '../src/host.js'
 
 afterEach(cleanup)
 
@@ -1276,6 +1276,108 @@ describe('shadowDom', () => {
     })
 
     expect(shadowLabel()?.textContent).toBe('v2')
+  })
+})
+
+// ─── forwardHostStyles / adoptHostStyles ─────────────────────────────────────
+
+describe('forwardHostStyles', () => {
+  let hostEl: HTMLElement
+  let shadow: ShadowRoot
+
+  beforeEach(() => {
+    hostEl = document.createElement('div')
+    document.body.appendChild(hostEl)
+    shadow = hostEl.attachShadow({ mode: 'open' })
+  })
+
+  afterEach(() => {
+    document.body.removeChild(hostEl)
+    // Remove any styles added to head during tests
+    document.head.querySelectorAll('style[data-test]').forEach((el) => el.remove())
+  })
+
+  it('clones existing <style> elements from document.head into the shadow root', () => {
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.foo { color: red }'
+    document.head.appendChild(style)
+
+    const cleanup = forwardHostStyles(shadow)
+
+    expect(shadow.querySelectorAll('style').length).toBeGreaterThanOrEqual(1)
+    expect(shadow.querySelector('style')?.textContent).toContain('.foo')
+
+    cleanup()
+  })
+
+  it('forwards <style> elements added to document.head after mount', async () => {
+    const cleanup = forwardHostStyles(shadow)
+
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.bar { color: blue }'
+    document.head.appendChild(style)
+
+    // MutationObserver callbacks are microtasks
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    expect(shadow.querySelector('style')?.textContent).toContain('.bar')
+
+    cleanup()
+  })
+
+  it('cleanup disconnects the observer — styles added after cleanup are not forwarded', async () => {
+    const cleanup = forwardHostStyles(shadow)
+    cleanup()
+
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.baz { color: green }'
+    document.head.appendChild(style)
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    expect(shadow.querySelector('style[data-test]')).toBeNull()
+  })
+})
+
+describe('adoptHostStyles prop', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — forwards existing head styles into the shadow root', async () => {
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.host { color: red }'
+    document.head.appendChild(style)
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        shadowDom: true,
+        adoptHostStyles: true,
+      }))
+    })
+
+    const shadow = document.querySelector('mf-bridge')?.shadowRoot
+    expect(shadow?.querySelector('style[data-test]')).not.toBeNull()
+
+    style.remove()
+  })
+
+  it('MFBridge — is a no-op when shadowDom is false', async () => {
+    // Should not throw or cause issues
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        shadowDom: false,
+        adoptHostStyles: true,
+      }))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('hi')
   })
 })
 
