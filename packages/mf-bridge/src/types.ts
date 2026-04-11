@@ -8,6 +8,21 @@ export type RegisterFn<P extends object = object> = (opts: {
   props: P
   /** Event namespace used by DOMEventBus. Must match the host's namespace. */
   namespace?: string
+  /**
+   * Shadow root to mount the React tree into.
+   * Provided by the host when `shadowDom` prop is `true` on `MFBridge`.
+   * Use it in `onBeforeMount` to inject component styles for CSS isolation:
+   *
+   * @example
+   * createMFEntry(Widget, ({ shadowRoot }) => {
+   *   if (shadowRoot) {
+   *     const sheet = new CSSStyleSheet()
+   *     sheet.replaceSync(widgetStyles)
+   *     shadowRoot.adoptedStyleSheets = [sheet]
+   *   }
+   * })
+   */
+  shadowRoot?: ShadowRoot
 }) => () => void
 
 /**

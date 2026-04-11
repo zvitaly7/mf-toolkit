@@ -1187,3 +1187,95 @@ describe('StrictMode stability', () => {
   })
 })
 
+// ─── shadowDom ───────────────────────────────────────────────────────────────
+
+// @testing-library does not pierce shadow DOM — query elements directly.
+function shadowLabel(): Element | null {
+  return document.querySelector('mf-bridge')?.shadowRoot?.querySelector('[data-testid="label"]') ?? null
+}
+
+describe('shadowDom', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — attaches an open shadow root to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' }, shadowDom: true }))
+    })
+
+    const hostEl = document.querySelector('mf-bridge')
+    expect(hostEl?.shadowRoot).toBeInstanceOf(ShadowRoot)
+    expect(hostEl?.shadowRoot?.mode).toBe('open')
+  })
+
+  it('MFBridge — remote component renders inside the shadow root', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'shadow' }, shadowDom: true }))
+    })
+
+    const label = shadowLabel()
+    expect(label?.textContent).toBe('shadow')
+    expect(label?.getRootNode()).toBeInstanceOf(ShadowRoot)
+  })
+
+  it('MFBridge — without shadowDom the component renders in the light DOM', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'light' } }))
+    })
+
+    const label = screen.getByTestId('label')
+    expect(label.getRootNode()).toBe(document)
+  })
+
+  it('MFBridge — shadowRoot is passed to onBeforeMount', async () => {
+    let receivedShadowRoot: ShadowRoot | undefined
+
+    const register = createMFEntry(Label, ({ shadowRoot }) => {
+      receivedShadowRoot = shadowRoot
+    })
+
+    await act(async () => {
+      render(createElement(MFBridge, { register, props: { text: 'hi' }, shadowDom: true }))
+    })
+
+    expect(receivedShadowRoot).toBeInstanceOf(ShadowRoot)
+  })
+
+  it('MFBridge — shadowRoot is undefined in onBeforeMount when shadowDom is false', async () => {
+    let receivedShadowRoot: ShadowRoot | undefined = ShadowRoot as any
+
+    const register = createMFEntry(Label, ({ shadowRoot }) => {
+      receivedShadowRoot = shadowRoot
+    })
+
+    await act(async () => {
+      render(createElement(MFBridge, { register, props: { text: 'hi' } }))
+    })
+
+    expect(receivedShadowRoot).toBeUndefined()
+  })
+
+  it('MFBridgeLazy — renders inside shadow DOM after lazy load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'lazy-shadow' }, shadowDom: true }))
+    })
+
+    const label = shadowLabel()
+    expect(label?.textContent).toBe('lazy-shadow')
+    expect(label?.getRootNode()).toBeInstanceOf(ShadowRoot)
+  })
+
+  it('prop streaming works inside shadow DOM', async () => {
+    const { rerender } = await act(async () =>
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'v1' }, shadowDom: true })),
+    )
+
+    await act(async () => {
+      rerender(createElement(MFBridge, { register: labelRegister, props: { text: 'v2' }, shadowDom: true }))
+    })
+
+    expect(shadowLabel()?.textContent).toBe('v2')
+  })
+})
+
