@@ -1,5 +1,6 @@
 import {
   createElement,
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -608,8 +609,8 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     }
   }, [register, retryKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (failed) return createElement(() => (errorFallback ?? fallback) as React.JSX.Element)
-  if (!registerFn) return createElement(() => fallback as React.JSX.Element)
+  if (failed) return createElement(Fragment, null, errorFallback ?? fallback)
+  if (!registerFn) return createElement(Fragment, null, fallback)
 
   return createElement(MFBridge, {
     register: registerFn,
