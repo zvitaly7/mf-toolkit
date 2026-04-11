@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { createElement, useRef, useState } from 'react'
+import { createElement, StrictMode, useRef, useState } from 'react'
 import { createMFEntry } from '../src/entry.js'
 import { DOMEventBus } from '../src/dom-event-bus.js'
 import { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache } from '../src/host.js'
@@ -1098,5 +1098,91 @@ describe('mountRef', () => {
     })
 
     expect(mountRef.current).toBeInstanceOf(HTMLElement)
+  })
+})
+
+// ─── StrictMode stability ─────────────────────────────────────────────────────
+
+describe('StrictMode stability', () => {
+  afterEach(cleanup)
+
+  function strict(node: React.JSX.Element) {
+    return createElement(StrictMode, null, node)
+  }
+
+  it('MFBridge — mounts and renders correctly under StrictMode', async () => {
+    await act(async () => {
+      render(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'strict' } })))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('strict')
+  })
+
+  it('MFBridge — streams props correctly after StrictMode double-invoke', async () => {
+    const { rerender } = await act(async () =>
+      render(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'v1' } }))),
+    )
+
+    await act(async () => {
+      rerender(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'v2' } })))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('v2')
+  })
+
+  it('MFBridge — mountRef is populated after StrictMode double-invoke', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' }, mountRef })))
+    })
+
+    expect(mountRef.current).toBeInstanceOf(HTMLElement)
+  })
+
+  it('MFBridge — commandRef works correctly after StrictMode double-invoke', async () => {
+    const received: string[] = []
+    const register = createMFEntry(Label, ({ onCommand }) => {
+      onCommand((type) => received.push(type))
+    })
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(strict(createElement(MFBridge, { register, props: { text: 'hi' }, commandRef: cmdRef })))
+    })
+
+    act(() => { cmdRef.current?.('ping') })
+    // StrictMode double-invokes effects but only the second mount should be live.
+    // Exactly one handler receives the command.
+    expect(received).toEqual(['ping'])
+  })
+
+  it('MFBridgeLazy — loads and renders correctly under StrictMode', async () => {
+    clearPreloadCache()
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(strict(createElement(MFBridgeLazy, { register: loader, props: { text: 'lazy-strict' } })))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('lazy-strict')
+  })
+
+  it('MFBridgeLazy — onStatusChange ends on ready under StrictMode', async () => {
+    clearPreloadCache()
+    const statuses: string[] = []
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(strict(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        onStatusChange: (s) => statuses.push(s),
+      })))
+    })
+
+    // StrictMode may emit extra 'loading' calls but must always end on 'ready'.
+    expect(statuses.at(-1)).toBe('ready')
+    expect(statuses.filter((s) => s === 'ready')).toHaveLength(1)
   })
 })
