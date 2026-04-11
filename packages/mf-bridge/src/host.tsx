@@ -25,6 +25,51 @@ const preloadCache = new Map<
   Promise<RegisterFn<any>>
 >()
 
+// ─── Suspense resource cache ──────────────────────────────────────────────────
+
+interface SuspenseResource<T> {
+  read(): T
+}
+
+function createSuspenseResource<T>(promise: Promise<T>): SuspenseResource<T> {
+  let status: 'pending' | 'fulfilled' | 'rejected' = 'pending'
+  let value: T
+  let reason: unknown
+
+  promise.then(
+    (v) => { status = 'fulfilled'; value = v },
+    (r) => { status = 'rejected'; reason = r },
+  )
+
+  return {
+    read() {
+      if (status === 'pending') throw promise
+      if (status === 'rejected') throw reason
+      return value!
+    },
+  }
+}
+
+const suspenseCache = new Map<
+  () => Promise<RegisterFn<any>>,
+  SuspenseResource<RegisterFn<any>>
+>()
+
+function getSuspenseResource(
+  loader: () => Promise<RegisterFn<any>>,
+): SuspenseResource<RegisterFn<any>> {
+  if (!suspenseCache.has(loader)) {
+    // Reuse an in-flight preload promise if available; otherwise start a new load.
+    let promise = preloadCache.get(loader)
+    if (!promise) {
+      promise = loader() as Promise<RegisterFn<any>>
+      preloadCache.set(loader, promise)
+    }
+    suspenseCache.set(loader, createSuspenseResource(promise))
+  }
+  return suspenseCache.get(loader)!
+}
+
 /**
  * Kicks off loading a remote module before `MFBridgeLazy` renders.
  * Call it as early as possible (on hover, on route prefetch, on app boot)
@@ -73,8 +118,10 @@ export function preloadMF<T extends RegisterFn<any>>(
 export function clearPreloadCache(loader?: () => Promise<RegisterFn<any>>): void {
   if (loader !== undefined) {
     preloadCache.delete(loader)
+    suspenseCache.delete(loader)
   } else {
     preloadCache.clear()
+    suspenseCache.clear()
   }
 }
 
@@ -622,5 +669,84 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     containerProps,
     commandRef,
     mountRef,
+  })
+}
+
+// ─── Suspense bridge ──────────────────────────────────────────────────────────
+
+export interface MFBridgeSuspenseProps<T extends () => Promise<RegisterFn<any>>> {
+  /**
+   * Async factory that resolves to a `RegisterFn`.
+   * Keep the reference stable — it is used as the cache key.
+   * Pre-warm with `preloadMF(loader)` to start loading before render.
+   */
+  register: T
+  /** Props forwarded to the remote component. */
+  props: MFLazyProps<T>
+  /** HTML tag used as the mount-point element. Defaults to `"mf-bridge"`. */
+  tagName?: string
+  /** CustomEvent namespace. Must match `createMFEntry` (defaults to `"mfbridge"`). */
+  namespace?: string
+  /** Enable `console.debug` logging. */
+  debug?: boolean
+  /** Called when the remote emits a custom event via `emit`. */
+  onEvent?: (type: string, payload: unknown) => void
+  /** Ref populated with a command sender after mount; cleared on unmount. */
+  commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+  /** Ref populated with the mount-point HTMLElement after mount; cleared on unmount. */
+  mountRef?: { current: HTMLElement | null }
+  /** HTML attributes forwarded to the mount-point element. */
+  containerProps?: Omit<React.HTMLAttributes<HTMLElement>, 'ref'>
+}
+
+/**
+ * Suspense-compatible microfrontend loader.
+ *
+ * Throws a promise while the remote module is loading — React suspends and
+ * shows the nearest `<Suspense fallback={...}>`. Once resolved, renders
+ * `MFBridge`. Load errors propagate to the nearest React Error Boundary.
+ *
+ * Use `preloadMF(loader)` to kick off loading before this component renders;
+ * the in-flight promise is reused automatically.
+ * Use `clearPreloadCache(loader)` to force a fresh load (also evicts the
+ * Suspense resource so React re-suspends on the next render).
+ *
+ * @example
+ * <ErrorBoundary fallback={<ErrorUI />}>
+ *   <Suspense fallback={<Spinner />}>
+ *     <MFBridgeSuspense
+ *       register={checkoutLoader}
+ *       props={{ orderId }}
+ *       onEvent={(type, payload) => {
+ *         if (type === 'orderPlaced') navigate('/confirmation')
+ *       }}
+ *     />
+ *   </Suspense>
+ * </ErrorBoundary>
+ */
+export function MFBridgeSuspense<T extends () => Promise<RegisterFn<any>>>({
+  register,
+  props,
+  tagName,
+  namespace,
+  debug,
+  onEvent,
+  commandRef,
+  mountRef,
+  containerProps,
+}: MFBridgeSuspenseProps<T>): React.JSX.Element {
+  // Throws if still loading; throws the error if rejected; returns RegisterFn when ready.
+  const registerFn = getSuspenseResource(register as () => Promise<RegisterFn<any>>).read()
+
+  return createElement(MFBridge, {
+    register: registerFn,
+    props,
+    tagName,
+    namespace,
+    debug,
+    onEvent,
+    commandRef,
+    mountRef,
+    containerProps,
   })
 }

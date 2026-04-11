@@ -1,9 +1,21 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { createElement, StrictMode, useRef, useState } from 'react'
+import { Component, createElement, StrictMode, Suspense, useRef, useState, type ReactNode } from 'react'
 import { createMFEntry } from '../src/entry.js'
 import { DOMEventBus } from '../src/dom-event-bus.js'
-import { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache } from '../src/host.js'
+import { MFBridge, MFBridgeLazy, MFBridgeSuspense, preloadMF, clearPreloadCache } from '../src/host.js'
+
+// Minimal error boundary for suspense error tests
+class TestErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { error: unknown }
+> {
+  state = { error: null }
+  static getDerivedStateFromError(error: unknown) { return { error } }
+  render() {
+    return this.state.error ? this.props.fallback : this.props.children
+  }
+}
 
 afterEach(cleanup)
 
@@ -1184,5 +1196,144 @@ describe('StrictMode stability', () => {
     // StrictMode may emit extra 'loading' calls but must always end on 'ready'.
     expect(statuses.at(-1)).toBe('ready')
     expect(statuses.filter((s) => s === 'ready')).toHaveLength(1)
+  })
+})
+
+// ─── MFBridgeSuspense ─────────────────────────────────────────────────────────
+
+describe('MFBridgeSuspense', () => {
+  beforeEach(() => clearPreloadCache())
+  afterEach(cleanup)
+
+  it('renders the remote component after the loader resolves', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(
+        createElement(Suspense, { fallback: createElement('span', null, 'loading') },
+          createElement(MFBridgeSuspense, { register: loader, props: { text: 'suspense-ok' } }),
+        ),
+      )
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('suspense-ok')
+  })
+
+  it('shows Suspense fallback while the loader is pending', async () => {
+    let resolve!: (fn: typeof labelRegister) => void
+    const loader = () => new Promise<typeof labelRegister>((r) => { resolve = r })
+
+    // render without awaiting resolution
+    act(() => {
+      render(
+        createElement(Suspense, { fallback: createElement('span', { 'data-testid': 'fb' }, 'loading') },
+          createElement(MFBridgeSuspense, { register: loader, props: { text: 'hi' } }),
+        ),
+      )
+    })
+
+    expect(screen.getByTestId('fb').textContent).toBe('loading')
+
+    // resolve and let React finish
+    await act(async () => { resolve(labelRegister) })
+    expect(screen.getByTestId('label').textContent).toBe('hi')
+  })
+
+  it('propagates load errors to the nearest Error Boundary', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const loader = () => Promise.reject(new Error('load failed'))
+
+    await act(async () => {
+      render(
+        createElement(TestErrorBoundary, { fallback: createElement('span', { 'data-testid': 'err' }, 'caught') },
+          createElement(Suspense, { fallback: null },
+            createElement(MFBridgeSuspense, { register: loader, props: {} as any }),
+          ),
+        ),
+      )
+    })
+
+    expect(screen.getByTestId('err').textContent).toBe('caught')
+    vi.restoreAllMocks()
+  })
+
+  it('reuses an existing preloadMF promise (no second network request)', async () => {
+    const factory = vi.fn(() => Promise.resolve(labelRegister))
+    preloadMF(factory)
+
+    await act(async () => {
+      render(
+        createElement(Suspense, { fallback: null },
+          createElement(MFBridgeSuspense, { register: factory, props: { text: 'preloaded' } }),
+        ),
+      )
+    })
+
+    expect(factory).toHaveBeenCalledTimes(1) // called only by preloadMF
+    expect(screen.getByTestId('label').textContent).toBe('preloaded')
+  })
+
+  it('clearPreloadCache evicts the suspense resource so a fresh load starts', async () => {
+    let callCount = 0
+    const loader = () => { callCount++; return Promise.resolve(labelRegister) }
+
+    // first render
+    await act(async () => {
+      render(
+        createElement(Suspense, { fallback: null },
+          createElement(MFBridgeSuspense, { register: loader, props: { text: 'v1' } }),
+        ),
+      )
+    })
+    expect(callCount).toBe(1)
+
+    cleanup()
+    clearPreloadCache(loader)
+
+    // second render after cache eviction — must start a new load
+    await act(async () => {
+      render(
+        createElement(Suspense, { fallback: null },
+          createElement(MFBridgeSuspense, { register: loader, props: { text: 'v2' } }),
+        ),
+      )
+    })
+    expect(callCount).toBe(2)
+  })
+
+  it('mountRef is populated after Suspense resolves', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(
+        createElement(Suspense, { fallback: null },
+          createElement(MFBridgeSuspense, { register: loader, props: { text: 'hi' }, mountRef }),
+        ),
+      )
+    })
+
+    expect(mountRef.current).toBeInstanceOf(HTMLElement)
+  })
+
+  it('commandRef works after Suspense resolves', async () => {
+    const received: string[] = []
+    const register = createMFEntry(Label, ({ onCommand }) => {
+      onCommand((type) => received.push(type))
+    })
+    const loader = () => Promise.resolve(register)
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(
+        createElement(Suspense, { fallback: null },
+          createElement(MFBridgeSuspense, { register: loader, props: { text: 'hi' }, commandRef: cmdRef }),
+        ),
+      )
+    })
+
+    act(() => { cmdRef.current?.('ping') })
+    expect(received).toEqual(['ping'])
   })
 })
