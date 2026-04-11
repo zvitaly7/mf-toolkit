@@ -1033,3 +1033,70 @@ describe('commandRef', () => {
     document.body.removeChild(mountPoint)
   })
 })
+
+// ─── mountRef ────────────────────────────────────────────────────────────────
+
+describe('mountRef', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — mountRef receives the HTMLElement after mount', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        mountRef,
+      }))
+    })
+
+    expect(mountRef.current).toBeInstanceOf(HTMLElement)
+    expect(mountRef.current?.tagName.toLowerCase()).toBe('mf-bridge')
+  })
+
+  it('MFBridge — mountRef.current is null after unmount', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    const { unmount } = render(createElement(MFBridge, {
+      register: labelRegister,
+      props: { text: 'hi' },
+      mountRef,
+    }))
+
+    await act(async () => {})
+    expect(mountRef.current).not.toBeNull()
+
+    act(() => { unmount() })
+    expect(mountRef.current).toBeNull()
+  })
+
+  it('MFBridge — mountRef points to the same element that hosts the remote component', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'check' },
+        mountRef,
+      }))
+    })
+
+    const label = screen.getByTestId('label')
+    expect(mountRef.current?.contains(label)).toBe(true)
+  })
+
+  it('MFBridgeLazy — mountRef is populated after lazy load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        mountRef,
+      }))
+    })
+
+    expect(mountRef.current).toBeInstanceOf(HTMLElement)
+  })
+})

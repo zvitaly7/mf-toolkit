@@ -139,6 +139,18 @@ export interface MFBridgeProps<T extends RegisterFn<any>> {
    * cmdRef.current?.('resetForm', { keepEmail: true })
    */
   commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+  /**
+   * Ref populated with the mount-point HTMLElement after mount and cleared
+   * on unmount. Use it to measure the element, call `focus()`, attach
+   * third-party libraries, etc.
+   *
+   * @example
+   * const mountRef = useRef<HTMLElement>(null)
+   * <MFBridge register={checkoutRegister} props={...} mountRef={mountRef} />
+   * // after mount:
+   * mountRef.current?.getBoundingClientRect()
+   */
+  mountRef?: { current: HTMLElement | null }
 }
 
 /**
@@ -165,6 +177,7 @@ export function MFBridge<T extends RegisterFn<any>>({
   onEvent,
   containerProps,
   commandRef,
+  mountRef,
 }: MFBridgeProps<T>): React.JSX.Element {
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
@@ -176,6 +189,8 @@ export function MFBridge<T extends RegisterFn<any>>({
   onEventRef.current = onEvent
   const commandRefRef = useRef(commandRef)
   commandRefRef.current = commandRef
+  const mountRefRef = useRef(mountRef)
+  mountRefRef.current = mountRef
 
   // Re-run when register or namespace changes: tear down the old remote and
   // mount the new one. isFirstRender is reset so the props-streaming effect
@@ -187,6 +202,9 @@ export function MFBridge<T extends RegisterFn<any>>({
     isFirstRender.current = true
     const bus = new DOMEventBus(el, namespace)
     busRef.current = bus
+
+    // Expose the mount-point element to the host.
+    if (mountRefRef.current) mountRefRef.current.current = el
 
     // Expose a send function so the host can dispatch commands to the remote.
     if (commandRefRef.current) {
@@ -205,6 +223,7 @@ export function MFBridge<T extends RegisterFn<any>>({
     return () => {
       dbg(namespace, debugRef.current, 'unmount')
       unsubEvent()
+      if (mountRefRef.current) mountRefRef.current.current = null
       if (commandRefRef.current) commandRefRef.current.current = null
       busRef.current = null
       unmountRef.current?.()
@@ -409,6 +428,16 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * cmdRef.current?.('resetForm')
    */
   commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+  /**
+   * Ref populated with the mount-point HTMLElement once the remote module
+   * has loaded and the component is mounted. Cleared on unmount.
+   * Forwarded to the inner `MFBridge`.
+   *
+   * @example
+   * const mountRef = useRef<HTMLElement>(null)
+   * <MFBridgeLazy register={checkoutLoader} props={...} mountRef={mountRef} />
+   */
+  mountRef?: { current: HTMLElement | null }
 }
 
 /**
@@ -449,6 +478,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   onEvent,
   containerProps,
   commandRef,
+  mountRef,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
@@ -590,5 +620,6 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     onEvent,
     containerProps,
     commandRef,
+    mountRef,
   })
 }
