@@ -12,6 +12,8 @@ import type { MFLazyProps, MFProps, RegisterFn } from './types.js'
 
 const DEFAULT_NS = 'mfbridge'
 
+let _instanceId = 0
+
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
 function dbg(namespace: string, enabled: boolean, event: string, ...data: unknown[]) {
@@ -272,7 +274,7 @@ export function MFBridge<T extends RegisterFn<any>>({
   register,
   props,
   tagName = 'mf-bridge',
-  namespace = DEFAULT_NS,
+  namespace,
   debug = false,
   onEvent,
   containerProps,
@@ -281,6 +283,11 @@ export function MFBridge<T extends RegisterFn<any>>({
   shadowDom = false,
   adoptHostStyles = false,
 }: MFBridgeProps<T>): React.JSX.Element {
+  // Auto-generate a stable unique namespace when not provided so that multiple
+  // instances of the same MF on the same page produce distinct debug log entries.
+  const [autoNs] = useState(() => `${DEFAULT_NS}-${++_instanceId}`)
+  const ns = namespace ?? autoNs
+
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
   const busRef = useRef<DOMEventBus | null>(null)
@@ -306,7 +313,7 @@ export function MFBridge<T extends RegisterFn<any>>({
     if (!el) return
 
     isFirstRender.current = true
-    const bus = new DOMEventBus(el, namespace)
+    const bus = new DOMEventBus(el, ns)
     busRef.current = bus
 
     // Expose the mount-point element to the host.
@@ -330,8 +337,8 @@ export function MFBridge<T extends RegisterFn<any>>({
       ? forwardHostStyles(shadowRoot)
       : undefined
 
-    dbg(namespace, debugRef.current, 'mount', { props, shadowDom: shadowDomRef.current })
-    unmountRef.current = register({ mountPointer: el, shadowRoot, props, namespace })
+    dbg(ns, debugRef.current, 'mount', { props, shadowDom: shadowDomRef.current })
+    unmountRef.current = register({ mountPointer: el, shadowRoot, props, namespace: ns })
 
     // Subscribe to remote-emitted events forwarded by createMFEntry's emit().
     const unsubEvent = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
@@ -339,7 +346,7 @@ export function MFBridge<T extends RegisterFn<any>>({
     })
 
     return () => {
-      dbg(namespace, debugRef.current, 'unmount')
+      dbg(ns, debugRef.current, 'unmount')
       unsubEvent()
       stopForwardingStyles?.()
       if (mountRefRef.current) mountRefRef.current.current = null
@@ -349,7 +356,7 @@ export function MFBridge<T extends RegisterFn<any>>({
       unmountRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [register, namespace])
+  }, [register, ns])
 
   // Stream prop updates when props reference changes.
   // Skips the initial mount — props were already passed to register() above.
@@ -358,7 +365,7 @@ export function MFBridge<T extends RegisterFn<any>>({
       isFirstRender.current = false
       return
     }
-    dbg(namespace, debugRef.current, 'propsChanged', props)
+    dbg(ns, debugRef.current, 'propsChanged', props)
     busRef.current?.send('propsChanged', props)
   }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -596,7 +603,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   fallback = null,
   errorFallback,
   tagName = 'mf-bridge',
-  namespace = DEFAULT_NS,
+  namespace,
   onError,
   onLoad,
   debug = false,
@@ -611,6 +618,9 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   shadowDom,
   adoptHostStyles,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
+  const [autoNs] = useState(() => `${DEFAULT_NS}-${++_instanceId}`)
+  const ns = namespace ?? autoNs
+
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
   // Incremented by the user-facing retry callback to trigger a fresh load cycle.
@@ -653,8 +663,6 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
 
     setRegisterFn(null)
     setFailed(false)
-
-    const ns = namespace
 
     onStatusChangeRef.current?.('loading')
 
@@ -746,7 +754,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     register: registerFn,
     props,
     tagName,
-    namespace,
+    namespace: ns,
     debug,
     onEvent,
     containerProps,

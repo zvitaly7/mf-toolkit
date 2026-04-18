@@ -67,7 +67,7 @@ describe('MFBridge', () => {
     const onEvent = vi.fn()
 
     await act(async () => {
-      render(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' }, onEvent }))
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' }, onEvent, namespace: 'mfbridge' }))
     })
 
     const container = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
@@ -82,7 +82,7 @@ describe('MFBridge', () => {
 
   it('does not throw when onEvent is not provided and remote emits', async () => {
     await act(async () => {
-      render(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' } }))
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' }, namespace: 'mfbridge' }))
     })
 
     const container = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
@@ -239,7 +239,7 @@ describe('MFBridgeLazy', () => {
     const loader = () => Promise.resolve(labelRegister)
 
     await act(async () => {
-      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'hi' }, onEvent }))
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'hi' }, onEvent, namespace: 'mfbridge' }))
     })
 
     const container = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
@@ -1378,6 +1378,120 @@ describe('adoptHostStyles prop', () => {
     })
 
     expect(screen.getByTestId('label').textContent).toBe('hi')
+  })
+})
+
+// ─── Multiple instances ───────────────────────────────────────────────────────
+
+describe('multiple instances of the same MF', () => {
+  it('each instance mounts independently', async () => {
+    await act(async () => {
+      render(
+        createElement('div', null,
+          createElement('div', { 'data-testid': 'slot-a' },
+            createElement(MFBridge, { register: labelRegister, props: { text: 'A' } }),
+          ),
+          createElement('div', { 'data-testid': 'slot-b' },
+            createElement(MFBridge, { register: labelRegister, props: { text: 'B' } }),
+          ),
+        ),
+      )
+    })
+
+    const labels = screen.getAllByTestId('label')
+    expect(labels).toHaveLength(2)
+    expect(labels[0].textContent).toBe('A')
+    expect(labels[1].textContent).toBe('B')
+  })
+
+  it('events from instance A do not reach instance B onEvent handler', async () => {
+    const eventsA: string[] = []
+    const eventsB: string[] = []
+
+    let emitA!: (type: string) => void
+    const registerA = createMFEntry(Label, ({ emit }) => { emitA = emit })
+    let emitB!: (type: string) => void
+    const registerB = createMFEntry(Label, ({ emit }) => { emitB = emit })
+
+    await act(async () => {
+      render(
+        createElement('div', null,
+          createElement(MFBridge, {
+            register: registerA,
+            props: { text: 'A' },
+            onEvent: (t) => eventsA.push(t),
+          }),
+          createElement(MFBridge, {
+            register: registerB,
+            props: { text: 'B' },
+            onEvent: (t) => eventsB.push(t),
+          }),
+        ),
+      )
+    })
+
+    act(() => { emitA('ping') })
+
+    expect(eventsA).toEqual(['ping'])
+    expect(eventsB).toEqual([])
+  })
+
+  it('prop updates to instance A do not affect instance B', async () => {
+    function Wrapper() {
+      const [text, setText] = useState('A-v1')
+      ;(Wrapper as any)._set = setText
+      return createElement(
+        'div', null,
+        createElement(MFBridge, { register: labelRegister, props: { text } }),
+        createElement(MFBridge, { register: labelRegister, props: { text: 'B-stable' } }),
+      )
+    }
+
+    await act(async () => { render(createElement(Wrapper)) })
+
+    await act(async () => { (Wrapper as any)._set('A-v2') })
+
+    const labels = screen.getAllByTestId('label')
+    expect(labels[0].textContent).toBe('A-v2')
+    expect(labels[1].textContent).toBe('B-stable')
+  })
+
+  it('auto-generates unique namespaces when namespace prop is omitted', async () => {
+    const namespaces: string[] = []
+    const registerCollect = createMFEntry(Label, ({ namespace }) => {
+      namespaces.push(namespace)
+    })
+
+    await act(async () => {
+      render(
+        createElement('div', null,
+          createElement(MFBridge, { register: registerCollect, props: { text: '1' } }),
+          createElement(MFBridge, { register: registerCollect, props: { text: '2' } }),
+        ),
+      )
+    })
+
+    expect(namespaces).toHaveLength(2)
+    expect(namespaces[0]).not.toBe(namespaces[1])
+    expect(namespaces[0]).toMatch(/^mfbridge-\d+$/)
+    expect(namespaces[1]).toMatch(/^mfbridge-\d+$/)
+  })
+
+  it('uses the explicit namespace when provided', async () => {
+    const namespaces: string[] = []
+    const registerCollect = createMFEntry(Label, ({ namespace }) => {
+      namespaces.push(namespace)
+    })
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: registerCollect,
+        props: { text: 'x' },
+        namespace: 'my-ns',
+      }))
+    })
+
+    expect(namespaces[0]).toBe('my-ns')
   })
 })
 
