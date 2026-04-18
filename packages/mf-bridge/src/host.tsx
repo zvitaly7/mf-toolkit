@@ -1,5 +1,6 @@
 import {
   createElement,
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -23,6 +24,7 @@ const preloadCache = new Map<
   () => Promise<RegisterFn<any>>,
   Promise<RegisterFn<any>>
 >()
+
 
 /**
  * Kicks off loading a remote module before `MFBridgeLazy` renders.
@@ -77,6 +79,73 @@ export function clearPreloadCache(loader?: () => Promise<RegisterFn<any>>): void
   }
 }
 
+// ─── Style forwarding ────────────────────────────────────────────────────────
+
+/**
+ * Forwards host-page stylesheets into a Shadow DOM root so that styles
+ * injected into `document.head` — Tailwind, CSS Modules, styled-components,
+ * Emotion, global design-system sheets — are visible inside the shadow root.
+ *
+ * What it does:
+ * - Clones existing `<style>` and `<link rel="stylesheet">` elements from head.
+ * - Shares `document.adoptedStyleSheets` at call time (live `CSSStyleSheet`
+ *   objects — edits are reflected in both document and shadow root).
+ * - Observes `document.head` for new elements added after mount (lazy CSS-in-JS
+ *   chunks, dynamically imported stylesheets).
+ *
+ * Returns a cleanup function that disconnects the observer — call it in
+ * `onBeforeUnmount`, or let the `adoptHostStyles` prop handle it automatically.
+ *
+ * Note: host styles become visible inside the MF. CSS isolation is one-way —
+ * MF styles still cannot leak out. CSS custom properties inherit through shadow
+ * DOM regardless of this setting.
+ *
+ * @example
+ * // Manual usage in createMFEntry
+ * let stopForwarding: (() => void) | undefined
+ * createMFEntry(
+ *   Widget,
+ *   ({ shadowRoot }) => {
+ *     if (shadowRoot) stopForwarding = forwardHostStyles(shadowRoot)
+ *   },
+ *   () => { stopForwarding?.() },
+ * )
+ */
+export function forwardHostStyles(shadowRoot: ShadowRoot): () => void {
+  if (typeof document === 'undefined') return () => {}
+
+  // Clone existing <style> and <link rel="stylesheet"> elements.
+  document.head
+    .querySelectorAll<HTMLElement>('style, link[rel="stylesheet"]')
+    .forEach((el) => shadowRoot.appendChild(el.cloneNode(true)))
+
+  // Share adoptedStyleSheets — CSSStyleSheet objects are live so mutations
+  // (e.g. emotion speedy mode updating rules) are reflected immediately.
+  if (document.adoptedStyleSheets?.length) {
+    shadowRoot.adoptedStyleSheets = [
+      ...shadowRoot.adoptedStyleSheets,
+      ...document.adoptedStyleSheets,
+    ]
+  }
+
+  // Watch for stylesheets injected after mount (lazy CSS-in-JS, dynamic imports).
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      Array.from(mutation.addedNodes).forEach((node) => {
+        if (
+          node instanceof HTMLStyleElement ||
+          (node instanceof HTMLLinkElement && node.rel === 'stylesheet')
+        ) {
+          shadowRoot.appendChild(node.cloneNode(true))
+        }
+      })
+    }
+  })
+  observer.observe(document.head, { childList: true })
+
+  return () => observer.disconnect()
+}
+
 // ─── Sync bridge ─────────────────────────────────────────────────────────────
 
 export interface MFBridgeProps<T extends RegisterFn<any>> {
@@ -111,6 +180,77 @@ export interface MFBridgeProps<T extends RegisterFn<any>> {
    * />
    */
   onEvent?: (type: string, payload: unknown) => void
+  /**
+   * HTML attributes forwarded to the mount-point element.
+   * Use to set `className`, `style`, `id`, `data-*`, ARIA attributes, etc.
+   * The `ref` is managed internally and cannot be overridden here.
+   *
+   * @example
+   * <MFBridge
+   *   register={checkoutRegister}
+   *   props={{ orderId }}
+   *   containerProps={{ className: 'checkout-slot', style: { minHeight: 200 } }}
+   * />
+   */
+  containerProps?: Omit<React.HTMLAttributes<HTMLElement>, 'ref'>
+  /**
+   * Mutable ref populated with a `send(type, payload?)` function once the
+   * remote component is mounted. Use it to dispatch imperative commands to the
+   * remote from the host. The ref is set to `null` on unmount.
+   *
+   * The remote receives commands by calling `onCommand(handler)` inside
+   * `onBeforeMount` (provided by `createMFEntry`).
+   *
+   * @example
+   * const cmdRef = useRef<(type: string, payload?: unknown) => void>(null)
+   * <MFBridge register={checkoutRegister} props={...} commandRef={cmdRef} />
+   * // later:
+   * cmdRef.current?.('resetForm', { keepEmail: true })
+   */
+  commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+  /**
+   * Ref populated with the mount-point HTMLElement after mount and cleared
+   * on unmount. Use it to measure the element, call `focus()`, attach
+   * third-party libraries, etc.
+   *
+   * @example
+   * const mountRef = useRef<HTMLElement>(null)
+   * <MFBridge register={checkoutRegister} props={...} mountRef={mountRef} />
+   * // after mount:
+   * mountRef.current?.getBoundingClientRect()
+   */
+  mountRef?: { current: HTMLElement | null }
+  /**
+   * When `true`, attaches a Shadow DOM to the mount-point element and renders
+   * the remote component inside it. Provides native CSS isolation — host styles
+   * do not bleed into the MF and vice versa.
+   *
+   * The shadow root (mode `"open"`) is passed to `createMFEntry`'s
+   * `onBeforeMount` so the remote can inject its own styles via
+   * `adoptedStyleSheets` or a `<style>` element.
+   *
+   * @example
+   * <MFBridge register={checkoutRegister} props={...} shadowDom />
+   */
+  shadowDom?: boolean
+  /**
+   * When `true` (requires `shadowDom`), automatically forwards all host-page
+   * stylesheets into the shadow root: `<style>`, `<link rel="stylesheet">`,
+   * and `document.adoptedStyleSheets`. A `MutationObserver` on `document.head`
+   * picks up styles injected after mount (CSS-in-JS lazy chunks, Tailwind CDN).
+   *
+   * Internally calls `forwardHostStyles(shadowRoot)` and cleans up the observer
+   * on unmount — no manual cleanup needed.
+   *
+   * **Trade-off:** host styles become visible inside the MF (one-way isolation —
+   * MF styles still cannot leak out). Use when you want to share the host's
+   * design system or utility classes (e.g. Tailwind) while keeping the MF's
+   * own styles from polluting the host.
+   *
+   * @example
+   * <MFBridge register={checkoutRegister} props={...} shadowDom adoptHostStyles />
+   */
+  adoptHostStyles?: boolean
 }
 
 /**
@@ -135,6 +275,11 @@ export function MFBridge<T extends RegisterFn<any>>({
   namespace = DEFAULT_NS,
   debug = false,
   onEvent,
+  containerProps,
+  commandRef,
+  mountRef,
+  shadowDom = false,
+  adoptHostStyles = false,
 }: MFBridgeProps<T>): React.JSX.Element {
   const containerRef = useRef<HTMLElement | null>(null)
   const unmountRef = useRef<(() => void) | null>(null)
@@ -144,6 +289,14 @@ export function MFBridge<T extends RegisterFn<any>>({
   debugRef.current = debug
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
+  const commandRefRef = useRef(commandRef)
+  commandRefRef.current = commandRef
+  const mountRefRef = useRef(mountRef)
+  mountRefRef.current = mountRef
+  const shadowDomRef = useRef(shadowDom)
+  shadowDomRef.current = shadowDom
+  const adoptHostStylesRef = useRef(adoptHostStyles)
+  adoptHostStylesRef.current = adoptHostStyles
 
   // Re-run when register or namespace changes: tear down the old remote and
   // mount the new one. isFirstRender is reset so the props-streaming effect
@@ -156,8 +309,29 @@ export function MFBridge<T extends RegisterFn<any>>({
     const bus = new DOMEventBus(el, namespace)
     busRef.current = bus
 
-    dbg(namespace, debugRef.current, 'mount', { props })
-    unmountRef.current = register({ mountPointer: el, props, namespace })
+    // Expose the mount-point element to the host.
+    if (mountRefRef.current) mountRefRef.current.current = el
+
+    // Expose a send function so the host can dispatch commands to the remote.
+    if (commandRefRef.current) {
+      commandRefRef.current.current = (type, payload) =>
+        bus.send('command', { type, payload })
+    }
+
+    // Attach a shadow root for CSS isolation when requested.
+    // Re-use an existing shadow root (e.g. after StrictMode double-invoke).
+    const shadowRoot = shadowDomRef.current
+      ? (el.shadowRoot ?? el.attachShadow({ mode: 'open' }))
+      : undefined
+
+    // Forward host stylesheets into the shadow root so Tailwind, CSS Modules,
+    // and CSS-in-JS outputs injected into document.head work inside the MF.
+    const stopForwardingStyles = shadowRoot && adoptHostStylesRef.current
+      ? forwardHostStyles(shadowRoot)
+      : undefined
+
+    dbg(namespace, debugRef.current, 'mount', { props, shadowDom: shadowDomRef.current })
+    unmountRef.current = register({ mountPointer: el, shadowRoot, props, namespace })
 
     // Subscribe to remote-emitted events forwarded by createMFEntry's emit().
     const unsubEvent = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
@@ -167,6 +341,9 @@ export function MFBridge<T extends RegisterFn<any>>({
     return () => {
       dbg(namespace, debugRef.current, 'unmount')
       unsubEvent()
+      stopForwardingStyles?.()
+      if (mountRefRef.current) mountRefRef.current.current = null
+      if (commandRefRef.current) commandRefRef.current.current = null
       busRef.current = null
       unmountRef.current?.()
       unmountRef.current = null
@@ -185,13 +362,60 @@ export function MFBridge<T extends RegisterFn<any>>({
     busRef.current?.send('propsChanged', props)
   }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return createElement(tagName, { ref: containerRef }) as React.JSX.Element
+  return createElement(tagName, { ...containerProps, ref: containerRef }) as React.JSX.Element
 }
 
 // ─── Lazy bridge ─────────────────────────────────────────────────────────────
 
 /** Status reported by {@link MFBridgeLazyProps.onStatusChange}. */
 export type MFBridgeStatus = 'loading' | 'ready' | 'error'
+
+/**
+ * Typed `onEvent` handler for the host side.
+ *
+ * Define an event map on the remote side and use this type on the host to get
+ * fully-typed `type` and `payload` in the handler without changing component
+ * signatures.
+ *
+ * @example
+ * // Shared types (e.g. in a shared-types package)
+ * type CheckoutEvents = {
+ *   orderPlaced: { orderId: string }
+ *   cancelled: void
+ * }
+ *
+ * // Host side
+ * const handleEvent: TypedOnEvent<CheckoutEvents> = (type, payload) => {
+ *   if (type === 'orderPlaced') navigate(`/confirmation/${payload.orderId}`)
+ *   if (type === 'cancelled') navigate('/cart')
+ * }
+ *
+ * <MFBridgeLazy ... onEvent={handleEvent} />
+ */
+export type TypedOnEvent<Events extends Record<string, unknown>> =
+  <K extends keyof Events & string>(type: K, payload: Events[K]) => void
+
+/**
+ * Typed `emit` function for the remote side.
+ *
+ * Use it to annotate the `emit` argument received in `onBeforeMount` so calls
+ * to `emit` are validated against your event map at compile time.
+ *
+ * @example
+ * // Shared types
+ * type CheckoutEvents = {
+ *   orderPlaced: { orderId: string }
+ *   cancelled: void
+ * }
+ *
+ * // Remote side
+ * createMFEntry(CheckoutWidget, ({ emit }) => {
+ *   const typedEmit = emit as TypedEmit<CheckoutEvents>
+ *   CheckoutWidget.onOrderPlaced = (id) => typedEmit('orderPlaced', { orderId: id })
+ * })
+ */
+export type TypedEmit<Events extends Record<string, unknown>> =
+  <K extends keyof Events & string>(type: K, payload?: Events[K]) => void
 
 export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   /**
@@ -207,6 +431,19 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
   props: MFLazyProps<T>
   /** Rendered while the remote module is loading or if loading fails. */
   fallback?: ReactNode
+  /**
+   * Rendered when all load attempts fail. Overrides `fallback` in the error
+   * state, letting you show a different UI for "loading" vs "failed".
+   * Falls back to `fallback` if not provided.
+   *
+   * @example
+   * <MFBridgeLazy
+   *   fallback={<Spinner />}
+   *   errorFallback={<ErrorBanner onRetry={retry} />}
+   *   ...
+   * />
+   */
+  errorFallback?: ReactNode
   /** HTML tag used as the mount-point element. Defaults to `"mf-bridge"`. */
   tagName?: string
   /**
@@ -285,6 +522,51 @@ export interface MFBridgeLazyProps<T extends () => Promise<RegisterFn<any>>> {
    * />
    */
   onEvent?: (type: string, payload: unknown) => void
+  /**
+   * HTML attributes forwarded to the mount-point element.
+   * Use to set `className`, `style`, `id`, `data-*`, ARIA attributes, etc.
+   * Forwarded to the inner `MFBridge` once the remote module is loaded.
+   *
+   * @example
+   * <MFBridgeLazy
+   *   register={checkoutLoader}
+   *   props={{ orderId }}
+   *   containerProps={{ className: 'checkout-slot', 'aria-label': 'Checkout' }}
+   * />
+   */
+  containerProps?: Omit<React.HTMLAttributes<HTMLElement>, 'ref'>
+  /**
+   * Mutable ref populated with a `send(type, payload?)` function once the
+   * remote module has loaded and the component is mounted.
+   * Forwarded to the inner `MFBridge`. Set to `null` while loading and on unmount.
+   *
+   * @example
+   * const cmdRef = useRef<(type: string, payload?: unknown) => void>(null)
+   * <MFBridgeLazy register={checkoutLoader} props={...} commandRef={cmdRef} />
+   * // after load:
+   * cmdRef.current?.('resetForm')
+   */
+  commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+  /**
+   * Ref populated with the mount-point HTMLElement once the remote module
+   * has loaded and the component is mounted. Cleared on unmount.
+   * Forwarded to the inner `MFBridge`.
+   *
+   * @example
+   * const mountRef = useRef<HTMLElement>(null)
+   * <MFBridgeLazy register={checkoutLoader} props={...} mountRef={mountRef} />
+   */
+  mountRef?: { current: HTMLElement | null }
+  /**
+   * When `true`, renders the remote component inside a Shadow DOM for CSS isolation.
+   * Forwarded to the inner `MFBridge`.
+   *
+   * @example
+   * <MFBridgeLazy register={checkoutLoader} props={...} shadowDom />
+   */
+  shadowDom?: boolean
+  /** When `true` (requires `shadowDom`), forwards host stylesheets into the shadow root. See `MFBridgeProps.adoptHostStyles`. */
+  adoptHostStyles?: boolean
 }
 
 /**
@@ -312,6 +594,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   register,
   props,
   fallback = null,
+  errorFallback,
   tagName = 'mf-bridge',
   namespace = DEFAULT_NS,
   onError,
@@ -322,6 +605,11 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   onStatusChange,
   timeout,
   onEvent,
+  containerProps,
+  commandRef,
+  mountRef,
+  shadowDom,
+  adoptHostStyles,
 }: MFBridgeLazyProps<T>): React.JSX.Element {
   const [registerFn, setRegisterFn] = useState<RegisterFn<any> | null>(null)
   const [failed, setFailed] = useState(false)
@@ -451,7 +739,8 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     }
   }, [register, retryKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (failed || !registerFn) return createElement(() => fallback as React.JSX.Element)
+  if (failed) return createElement(Fragment, null, errorFallback ?? fallback)
+  if (!registerFn) return createElement(Fragment, null, fallback)
 
   return createElement(MFBridge, {
     register: registerFn,
@@ -460,5 +749,11 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     namespace,
     debug,
     onEvent,
+    containerProps,
+    commandRef,
+    mountRef,
+    shadowDom,
+    adoptHostStyles,
   })
 }
+

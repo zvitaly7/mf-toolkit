@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { createElement, useRef, useState } from 'react'
+import { createElement, StrictMode, useRef, useState } from 'react'
 import { createMFEntry } from '../src/entry.js'
 import { DOMEventBus } from '../src/dom-event-bus.js'
-import { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache } from '../src/host.js'
+import { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache, forwardHostStyles } from '../src/host.js'
 
 afterEach(cleanup)
 
@@ -763,3 +763,621 @@ describe('retry', () => {
     expect(screen.getByTestId('label').textContent).toBe('fresh')
   })
 })
+
+// ─── errorFallback ────────────────────────────────────────────────────────
+
+describe('errorFallback', () => {
+  afterEach(cleanup)
+
+  it('shows fallback while loading and errorFallback after failure', async () => {
+    let reject!: (err: Error) => void
+    const loader = () => new Promise<typeof labelRegister>((_, rej) => { reject = rej })
+
+    render(createElement(MFBridgeLazy, {
+      register: loader,
+      props: { text: 'x' },
+      fallback: createElement('span', { 'data-testid': 'fb-loading' }, 'loading'),
+      errorFallback: createElement('span', { 'data-testid': 'fb-error' }, 'failed'),
+    }))
+
+    expect(screen.getByTestId('fb-loading')).toBeTruthy()
+    expect(screen.queryByTestId('fb-error')).toBeNull()
+
+    await act(async () => { reject(new Error('load failed')) })
+
+    expect(screen.getByTestId('fb-error')).toBeTruthy()
+    expect(screen.queryByTestId('fb-loading')).toBeNull()
+    expect(screen.queryByTestId('label')).toBeNull()
+  })
+
+  it('falls back to fallback when errorFallback is not provided', async () => {
+    const loader = () => Promise.reject(new Error('fail'))
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'x' },
+        fallback: createElement('span', { 'data-testid': 'fb' }, 'fallback'),
+      }))
+    })
+
+    expect(screen.getByTestId('fb')).toBeTruthy()
+  })
+
+  it('shows fallback (not errorFallback) while loading succeeds', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'ok' },
+        fallback: createElement('span', { 'data-testid': 'fb-loading' }, 'loading'),
+        errorFallback: createElement('span', { 'data-testid': 'fb-error' }, 'failed'),
+      }))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('ok')
+    expect(screen.queryByTestId('fb-loading')).toBeNull()
+    expect(screen.queryByTestId('fb-error')).toBeNull()
+  })
+
+  it('switches back to loading fallback after manual retry', async () => {
+    let attempt = 0
+    const loader = () => {
+      attempt++
+      return attempt === 1 ? Promise.reject(new Error('fail')) : Promise.resolve(labelRegister)
+    }
+    let retryFn!: () => void
+    const onError = (_err: unknown, retry: () => void) => { retryFn = retry }
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'ok' },
+        fallback: createElement('span', { 'data-testid': 'fb-loading' }, 'loading'),
+        errorFallback: createElement('span', { 'data-testid': 'fb-error' }, 'failed'),
+        onError,
+      }))
+    })
+
+    expect(screen.getByTestId('fb-error')).toBeTruthy()
+
+    await act(async () => { retryFn() })
+
+    expect(screen.getByTestId('label').textContent).toBe('ok')
+    expect(screen.queryByTestId('fb-error')).toBeNull()
+  })
+})
+
+// ─── containerProps ───────────────────────────────────────────────────────
+
+describe('containerProps', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — applies id to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { id: 'checkout-slot' },
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.id).toBe('checkout-slot')
+  })
+
+  it('MFBridge — applies style to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { style: { minHeight: '200px' } },
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.style.minHeight).toBe('200px')
+  })
+
+  it('MFBridge — applies data-* attribute to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { 'data-remote': 'checkout' } as any,
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.getAttribute('data-remote')).toBe('checkout')
+  })
+
+  it('MFBridgeLazy — forwards containerProps to mount element after load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        containerProps: { id: 'checkout', 'data-slot': 'lazy' } as any,
+      }))
+    })
+
+    const el = screen.getByTestId('label').closest('mf-bridge') as HTMLElement
+    expect(el.id).toBe('checkout')
+    expect(el.getAttribute('data-slot')).toBe('lazy')
+  })
+
+  it('containerProps does not override the internal ref', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        containerProps: { id: 'has-ref' },
+      }))
+    })
+
+    // Remote component is mounted → bridge ref is working correctly
+    expect(screen.getByTestId('label').textContent).toBe('hi')
+  })
+})
+
+// ─── commandRef (host→remote imperative commands) ────────────────────────────
+
+describe('commandRef', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — commandRef is populated after mount', async () => {
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        commandRef: cmdRef,
+      }))
+    })
+
+    expect(typeof cmdRef.current).toBe('function')
+  })
+
+  it('MFBridge — commandRef.current is null after unmount', async () => {
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    const { unmount } = render(createElement(MFBridge, {
+      register: labelRegister,
+      props: { text: 'hi' },
+      commandRef: cmdRef,
+    }))
+
+    await act(async () => {})
+    expect(cmdRef.current).not.toBeNull()
+
+    act(() => { unmount() })
+    expect(cmdRef.current).toBeNull()
+  })
+
+  it('MFBridge — commandRef.send dispatches a command received by onCommand in createMFEntry', async () => {
+    const received: Array<{ type: string; payload: unknown }> = []
+
+    const register = createMFEntry(
+      Label,
+      ({ onCommand }) => {
+        onCommand((type, payload) => received.push({ type, payload }))
+      },
+    )
+
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register,
+        props: { text: 'hi' },
+        commandRef: cmdRef,
+      }))
+    })
+
+    act(() => { cmdRef.current?.('reset', { keepEmail: true }) })
+    act(() => { cmdRef.current?.('focus') })
+
+    expect(received).toEqual([
+      { type: 'reset', payload: { keepEmail: true } },
+      { type: 'focus', payload: undefined },
+    ])
+  })
+
+  it('MFBridgeLazy — commandRef is populated after lazy load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        commandRef: cmdRef,
+      }))
+    })
+
+    expect(typeof cmdRef.current).toBe('function')
+  })
+
+  it('onCommand subscriptions are cleaned up on unmount', async () => {
+    const received: string[] = []
+
+    const register = createMFEntry(
+      Label,
+      ({ onCommand }) => {
+        onCommand((type) => received.push(type))
+      },
+    )
+
+    const mountPoint = document.createElement('div')
+    document.body.appendChild(mountPoint)
+
+    let unmountFn!: () => void
+    await act(async () => {
+      unmountFn = register({ mountPointer: mountPoint, props: { text: 'hi' } })
+    })
+
+    // Verify subscription is active
+    const bus = new DOMEventBus(mountPoint, 'mfbridge')
+    act(() => { bus.send('command', { type: 'ping', payload: undefined }) })
+    expect(received).toHaveLength(1)
+
+    // Unmount — subscription must be cleaned up
+    act(() => { unmountFn() })
+    act(() => { bus.send('command', { type: 'ping', payload: undefined }) })
+    expect(received).toHaveLength(1) // no new entries
+
+    document.body.removeChild(mountPoint)
+  })
+})
+
+// ─── mountRef ────────────────────────────────────────────────────────────────
+
+describe('mountRef', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — mountRef receives the HTMLElement after mount', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        mountRef,
+      }))
+    })
+
+    expect(mountRef.current).toBeInstanceOf(HTMLElement)
+    expect(mountRef.current?.tagName.toLowerCase()).toBe('mf-bridge')
+  })
+
+  it('MFBridge — mountRef.current is null after unmount', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    const { unmount } = render(createElement(MFBridge, {
+      register: labelRegister,
+      props: { text: 'hi' },
+      mountRef,
+    }))
+
+    await act(async () => {})
+    expect(mountRef.current).not.toBeNull()
+
+    act(() => { unmount() })
+    expect(mountRef.current).toBeNull()
+  })
+
+  it('MFBridge — mountRef points to the same element that hosts the remote component', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'check' },
+        mountRef,
+      }))
+    })
+
+    const label = screen.getByTestId('label')
+    expect(mountRef.current?.contains(label)).toBe(true)
+  })
+
+  it('MFBridgeLazy — mountRef is populated after lazy load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        mountRef,
+      }))
+    })
+
+    expect(mountRef.current).toBeInstanceOf(HTMLElement)
+  })
+})
+
+// ─── StrictMode stability ─────────────────────────────────────────────────────
+
+describe('StrictMode stability', () => {
+  afterEach(cleanup)
+
+  function strict(node: React.JSX.Element) {
+    return createElement(StrictMode, null, node)
+  }
+
+  it('MFBridge — mounts and renders correctly under StrictMode', async () => {
+    await act(async () => {
+      render(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'strict' } })))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('strict')
+  })
+
+  it('MFBridge — streams props correctly after StrictMode double-invoke', async () => {
+    const { rerender } = await act(async () =>
+      render(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'v1' } }))),
+    )
+
+    await act(async () => {
+      rerender(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'v2' } })))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('v2')
+  })
+
+  it('MFBridge — mountRef is populated after StrictMode double-invoke', async () => {
+    const mountRef: { current: HTMLElement | null } = { current: null }
+
+    await act(async () => {
+      render(strict(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' }, mountRef })))
+    })
+
+    expect(mountRef.current).toBeInstanceOf(HTMLElement)
+  })
+
+  it('MFBridge — commandRef works correctly after StrictMode double-invoke', async () => {
+    const received: string[] = []
+    const register = createMFEntry(Label, ({ onCommand }) => {
+      onCommand((type) => received.push(type))
+    })
+    const cmdRef: { current: ((type: string, payload?: unknown) => void) | null } = { current: null }
+
+    await act(async () => {
+      render(strict(createElement(MFBridge, { register, props: { text: 'hi' }, commandRef: cmdRef })))
+    })
+
+    act(() => { cmdRef.current?.('ping') })
+    // StrictMode double-invokes effects but only the second mount should be live.
+    // Exactly one handler receives the command.
+    expect(received).toEqual(['ping'])
+  })
+
+  it('MFBridgeLazy — loads and renders correctly under StrictMode', async () => {
+    clearPreloadCache()
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(strict(createElement(MFBridgeLazy, { register: loader, props: { text: 'lazy-strict' } })))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('lazy-strict')
+  })
+
+  it('MFBridgeLazy — onStatusChange ends on ready under StrictMode', async () => {
+    clearPreloadCache()
+    const statuses: string[] = []
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(strict(createElement(MFBridgeLazy, {
+        register: loader,
+        props: { text: 'hi' },
+        onStatusChange: (s) => statuses.push(s),
+      })))
+    })
+
+    // StrictMode may emit extra 'loading' calls but must always end on 'ready'.
+    expect(statuses.at(-1)).toBe('ready')
+    expect(statuses.filter((s) => s === 'ready')).toHaveLength(1)
+  })
+})
+
+// ─── shadowDom ───────────────────────────────────────────────────────────────
+
+// @testing-library does not pierce shadow DOM — query elements directly.
+function shadowLabel(): Element | null {
+  return document.querySelector('mf-bridge')?.shadowRoot?.querySelector('[data-testid="label"]') ?? null
+}
+
+describe('shadowDom', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — attaches an open shadow root to the mount element', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'hi' }, shadowDom: true }))
+    })
+
+    const hostEl = document.querySelector('mf-bridge')
+    expect(hostEl?.shadowRoot).toBeInstanceOf(ShadowRoot)
+    expect(hostEl?.shadowRoot?.mode).toBe('open')
+  })
+
+  it('MFBridge — remote component renders inside the shadow root', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'shadow' }, shadowDom: true }))
+    })
+
+    const label = shadowLabel()
+    expect(label?.textContent).toBe('shadow')
+    expect(label?.getRootNode()).toBeInstanceOf(ShadowRoot)
+  })
+
+  it('MFBridge — without shadowDom the component renders in the light DOM', async () => {
+    await act(async () => {
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'light' } }))
+    })
+
+    const label = screen.getByTestId('label')
+    expect(label.getRootNode()).toBe(document)
+  })
+
+  it('MFBridge — shadowRoot is passed to onBeforeMount', async () => {
+    let receivedShadowRoot: ShadowRoot | undefined
+
+    const register = createMFEntry(Label, ({ shadowRoot }) => {
+      receivedShadowRoot = shadowRoot
+    })
+
+    await act(async () => {
+      render(createElement(MFBridge, { register, props: { text: 'hi' }, shadowDom: true }))
+    })
+
+    expect(receivedShadowRoot).toBeInstanceOf(ShadowRoot)
+  })
+
+  it('MFBridge — shadowRoot is undefined in onBeforeMount when shadowDom is false', async () => {
+    let receivedShadowRoot: ShadowRoot | undefined = ShadowRoot as any
+
+    const register = createMFEntry(Label, ({ shadowRoot }) => {
+      receivedShadowRoot = shadowRoot
+    })
+
+    await act(async () => {
+      render(createElement(MFBridge, { register, props: { text: 'hi' } }))
+    })
+
+    expect(receivedShadowRoot).toBeUndefined()
+  })
+
+  it('MFBridgeLazy — renders inside shadow DOM after lazy load', async () => {
+    const loader = () => Promise.resolve(labelRegister)
+
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'lazy-shadow' }, shadowDom: true }))
+    })
+
+    const label = shadowLabel()
+    expect(label?.textContent).toBe('lazy-shadow')
+    expect(label?.getRootNode()).toBeInstanceOf(ShadowRoot)
+  })
+
+  it('prop streaming works inside shadow DOM', async () => {
+    const { rerender } = await act(async () =>
+      render(createElement(MFBridge, { register: labelRegister, props: { text: 'v1' }, shadowDom: true })),
+    )
+
+    await act(async () => {
+      rerender(createElement(MFBridge, { register: labelRegister, props: { text: 'v2' }, shadowDom: true }))
+    })
+
+    expect(shadowLabel()?.textContent).toBe('v2')
+  })
+})
+
+// ─── forwardHostStyles / adoptHostStyles ─────────────────────────────────────
+
+describe('forwardHostStyles', () => {
+  let hostEl: HTMLElement
+  let shadow: ShadowRoot
+
+  beforeEach(() => {
+    hostEl = document.createElement('div')
+    document.body.appendChild(hostEl)
+    shadow = hostEl.attachShadow({ mode: 'open' })
+  })
+
+  afterEach(() => {
+    document.body.removeChild(hostEl)
+    // Remove any styles added to head during tests
+    document.head.querySelectorAll('style[data-test]').forEach((el) => el.remove())
+  })
+
+  it('clones existing <style> elements from document.head into the shadow root', () => {
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.foo { color: red }'
+    document.head.appendChild(style)
+
+    const cleanup = forwardHostStyles(shadow)
+
+    expect(shadow.querySelectorAll('style').length).toBeGreaterThanOrEqual(1)
+    expect(shadow.querySelector('style')?.textContent).toContain('.foo')
+
+    cleanup()
+  })
+
+  it('forwards <style> elements added to document.head after mount', async () => {
+    const cleanup = forwardHostStyles(shadow)
+
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.bar { color: blue }'
+    document.head.appendChild(style)
+
+    // MutationObserver callbacks are microtasks
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    expect(shadow.querySelector('style')?.textContent).toContain('.bar')
+
+    cleanup()
+  })
+
+  it('cleanup disconnects the observer — styles added after cleanup are not forwarded', async () => {
+    const cleanup = forwardHostStyles(shadow)
+    cleanup()
+
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.baz { color: green }'
+    document.head.appendChild(style)
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    expect(shadow.querySelector('style[data-test]')).toBeNull()
+  })
+})
+
+describe('adoptHostStyles prop', () => {
+  afterEach(cleanup)
+
+  it('MFBridge — forwards existing head styles into the shadow root', async () => {
+    const style = document.createElement('style')
+    style.setAttribute('data-test', 'true')
+    style.textContent = '.host { color: red }'
+    document.head.appendChild(style)
+
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        shadowDom: true,
+        adoptHostStyles: true,
+      }))
+    })
+
+    const shadow = document.querySelector('mf-bridge')?.shadowRoot
+    expect(shadow?.querySelector('style[data-test]')).not.toBeNull()
+
+    style.remove()
+  })
+
+  it('MFBridge — is a no-op when shadowDom is false', async () => {
+    // Should not throw or cause issues
+    await act(async () => {
+      render(createElement(MFBridge, {
+        register: labelRegister,
+        props: { text: 'hi' },
+        shadowDom: false,
+        adoptHostStyles: true,
+      }))
+    })
+
+    expect(screen.getByTestId('label').textContent).toBe('hi')
+  })
+})
+
