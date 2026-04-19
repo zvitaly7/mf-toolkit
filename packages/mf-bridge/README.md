@@ -91,19 +91,22 @@ When a host React component re-renders with new props, those props need to reach
 `mf-bridge` solves this with DOM `CustomEvent`s dispatched on the shared mount-point element. Both sides hold a reference to the same DOM node:
 
 ```
-Host (React tree)                   Remote (React tree)
-─────────────────                   ───────────────────
-MFBridgeLazy                        createMFEntry (listens)
-  │                                   │
-  ├─ creates <mf-bridge> element ─────┘ (same HTMLElement)
-  │
-  ├─ mounts remote via register()
-  │
-  └─ on props change:
-       element.dispatchEvent(
-         new CustomEvent('mfbridge:propsChanged', { detail: newProps })
-       )
-                                    ↑ remote listener calls root.render()
+  Host bundle                          Remote bundle
+  ───────────────────────────────      ──────────────────────────
+  MFBridgeLazy                         createMFEntry / defineMFEntry
+       │                                      │
+       │  creates <mf-bridge> element         │
+       │◄─────────────────────────────────────┘  (shared HTMLElement)
+       │
+       │  register({ mountPointer, props })
+       │──────────────────────────────────────►  mounts component
+       │
+       │  props change →
+       │  dispatchEvent('mfbridge-1:propsChanged')
+       │──────────────────────────────────────►  re-renders
+       │
+       │◄──────────────────────────────────────  emit('orderPlaced')
+       │  onEvent callback fires
 ```
 
 No shared module scope. No global registry. No React context crossing bundle boundaries. Just a DOM event on the element they both already own.
@@ -878,17 +881,14 @@ const off = bus.on<{ page: string }>('navigateTo', ({ page }) => {
 
 It deliberately does **not** handle how remotes are located or loaded. That separation keeps the bridge compatible with any Module Federation setup: static webpack remotes, dynamic URL resolution, runtime federation, or a custom loader.
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Where is remoteEntry.js?  → webpack config / mf-loader      │
-│  Has this remote been loaded before? → mf-loader registry    │
-│  Type-safe importRemote?   → mf-loader                       │
-├──────────────────────────────────────────────────────────────┤
-│  Mount register() into DOM → mf-bridge  ✓                    │
-│  Stream prop updates       → mf-bridge  ✓                    │
-│  Show fallback while loading → mf-bridge  ✓                  │
-└──────────────────────────────────────────────────────────────┘
-```
+| Responsibility | Tool |
+|---|---|
+| Where is `remoteEntry.js`? | webpack config / `mf-loader` |
+| Has this remote been loaded before? | `mf-loader` registry |
+| Type-safe `importRemote` wrapper | `mf-loader` |
+| Mount `register()` into DOM | **mf-bridge** ✓ |
+| Stream prop updates | **mf-bridge** ✓ |
+| Show fallback while loading | **mf-bridge** ✓ |
 
 ### How `import('checkout/entry')` works at runtime
 
