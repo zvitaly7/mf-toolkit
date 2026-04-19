@@ -31,6 +31,7 @@ async function MFBridgeSSRFetcher<P extends object>({
       const html = await res.text()
       return createElement('div', {
         'data-mf-host': true,
+        ...(namespace ? { 'data-mf-namespace': namespace } : {}),
         dangerouslySetInnerHTML: { __html: html },
       })
     }

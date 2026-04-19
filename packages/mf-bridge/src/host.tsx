@@ -146,6 +146,94 @@ export function forwardHostStyles(shadowRoot: ShadowRoot): () => void {
   return () => observer.disconnect()
 }
 
+// ─── SSR hydration bridge ─────────────────────────────────────────────────────
+
+export interface MFBridgeHydratedProps<P extends object = object> {
+  /**
+   * Must match the `namespace` passed to `MFBridgeSSR` (host RSC) and to
+   * `hydrateWithBridge` (remote client bundle).
+   */
+  namespace: string
+  /** Props to stream to the already-hydrated remote component. */
+  props: P
+  /** Called when the remote component emits a custom event via `emit`. */
+  onEvent?: (type: string, payload: unknown) => void
+  /**
+   * Ref populated with a `send(type, payload?)` function after mount.
+   * Use it to dispatch imperative commands to the remote.
+   */
+  commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+  /** Enable `console.debug` logging. */
+  debug?: boolean
+}
+
+/**
+ * Host-side client component that streams prop updates into a server-rendered
+ * MF fragment after hydration.
+ *
+ * Renders nothing to the DOM. On every `props` change it dispatches a
+ * `propsChanged` CustomEvent on the `[data-mf-namespace]` element written by
+ * `MFBridgeSSR`, which `hydrateWithBridge` (remote client bundle) picks up and
+ * forwards to the React root via `root.render()`.
+ *
+ * @example
+ * // page.tsx (RSC) — initial HTML
+ * <MFBridgeSSR url="https://checkout.acme.com/fragment" props={{ orderId, step }} namespace="checkout" />
+ *
+ * // CheckoutController.tsx ('use client') — ongoing prop updates
+ * const [step, setStep] = useState('summary')
+ * <MFBridgeHydrated namespace="checkout" props={{ orderId, step }} />
+ */
+export function MFBridgeHydrated<P extends object>({
+  namespace,
+  props,
+  onEvent,
+  commandRef,
+  debug = false,
+}: MFBridgeHydratedProps<P>): null {
+  const busRef = useRef<DOMEventBus | null>(null)
+  const isFirstRender = useRef(true)
+  const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
+  const commandRefRef = useRef(commandRef)
+  commandRefRef.current = commandRef
+
+  useEffect(() => {
+    const el = document.querySelector(`[data-mf-namespace="${namespace}"]`) as HTMLElement | null
+    if (!el) return
+
+    isFirstRender.current = true
+    const bus = new DOMEventBus(el, namespace)
+    busRef.current = bus
+
+    if (commandRefRef.current) {
+      commandRefRef.current.current = (type, payload) =>
+        bus.send('command', { type, payload })
+    }
+
+    const unsubEvent = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
+      onEventRef.current?.(type, payload)
+    })
+
+    return () => {
+      unsubEvent()
+      busRef.current = null
+      if (commandRefRef.current) commandRefRef.current.current = null
+    }
+  }, [namespace])
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    if (debug) console.debug(`[mf-bridge-hydrated:${namespace}]`, 'propsChanged', props)
+    busRef.current?.send('propsChanged', props)
+  }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null
+}
+
 // ─── Sync bridge ─────────────────────────────────────────────────────────────
 
 export interface MFBridgeProps<T extends RegisterFn<any>> {
