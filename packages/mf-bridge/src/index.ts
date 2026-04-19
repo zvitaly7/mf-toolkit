@@ -2,3 +2,6 @@ export { MFBridge, MFBridgeLazy, preloadMF, clearPreloadCache, forwardHostStyles
 export type { MFBridgeProps, MFBridgeLazyProps, MFBridgeStatus, TypedOnEvent, TypedEmit } from './host.js'
 export type { RegisterFn, MFProps, MFLazyProps } from './types.js'
 export { DOMEventBus } from './dom-event-bus.js'
+export { createMFEntry } from './entry.js'
+export { defineMFEntry } from './define-entry.js'
+export type { MFMountOpts } from './define-entry.js'
