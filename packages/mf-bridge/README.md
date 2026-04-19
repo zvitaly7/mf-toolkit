@@ -4,9 +4,11 @@
 [![license](https://img.shields.io/npm/l/@mf-toolkit/mf-bridge?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
 
-**Mount a microfrontend React component from any Module Federation remote — with lazy loading, automatic prop streaming, remote→host events, and a typed fallback.**
+**Mount microfrontend components from any Module Federation remote — lazy loading, automatic prop streaming, bidirectional events, CSS isolation via Shadow DOM, and framework-agnostic remote support.**
 
 `mf-bridge` replaces the copy-paste `moved_to_mf_*` wrapper pattern. Define once how a remote component should be mounted, and the bridge handles the full lifecycle: lazy load → mount in a dedicated DOM node → stream prop updates via DOM events → emit events back to the host → clean unmount.
+
+Remote can be **React, Vue, Angular, Svelte, or vanilla JS** — the host side is always the same two components.
 
 Zero production dependencies. Works with any Module Federation setup.
 
@@ -118,9 +120,12 @@ No shared module scope. No global registry. No React context crossing bundle bou
 | **Clean unmount** with listener cleanup | Manual | Manual | ✅ |
 | **Type-safe props** inferred from remote's export | ✗ | ✗ | ✅ |
 | **Remote→Host events** without shared globals | ✗ | ✗ | ✅ |
+| **Host→Remote commands** (`commandRef`) | ✗ | ✗ | ✅ |
 | **Load status tracking** (`onStatusChange`) | ✗ | ✗ | ✅ |
 | **Retry** on transient failure (auto + manual) | ✗ | ✗ | ✅ |
 | **Timeout** per load attempt | ✗ | ✗ | ✅ |
+| **CSS isolation** via Shadow DOM | ✗ | ✗ | ✅ |
+| **Framework-agnostic** remote (Vue, Angular, vanilla) | ✗ | ✗ | ✅ |
 | Zero production dependencies | — | ✅ | ✅ |
 
 React portals render into a different DOM node but stay in the same React tree and bundle — they can't reach across Module Federation boundaries. `React.lazy` defers the import but still requires the component to live in the same bundle and React root.
@@ -283,6 +288,158 @@ export const register = createMFEntry(
 Events travel over the same DOM `CustomEvent` channel as prop streaming — no shared globals, no React context crossing bundle boundaries.
 
 `onEvent` is also available on the synchronous `MFBridge` component.
+
+---
+
+## Host→Remote commands
+
+The host can dispatch imperative commands to the remote at any time via `commandRef`. Common use cases: reset a form, scroll to top, trigger a focus.
+
+**Host side:**
+
+```tsx
+const cmdRef = useRef<(type: string, payload?: unknown) => void>(null)
+
+<MFBridgeLazy
+  register={checkoutLoader}
+  props={{ orderId }}
+  commandRef={cmdRef}
+/>
+
+// Somewhere else in the host:
+cmdRef.current?.('reset', { keepEmail: true })
+```
+
+**Remote side** — subscribe in `onBeforeMount`:
+
+```tsx
+export const register = createMFEntry(
+  CheckoutWidget,
+  ({ onCommand }) => {
+    onCommand((type, payload) => {
+      if (type === 'reset') CheckoutWidget.reset(payload)
+      if (type === 'focus') inputRef.current?.focus()
+    })
+  },
+)
+```
+
+Subscriptions are cleaned up automatically on unmount even if you never call the returned unsubscribe function.
+
+---
+
+## CSS isolation via Shadow DOM
+
+Mount the remote inside a Shadow DOM so host styles cannot bleed in and remote styles cannot bleed out.
+
+```tsx
+<MFBridgeLazy
+  register={checkoutLoader}
+  props={{ orderId }}
+  shadowDom
+/>
+```
+
+The shadow root (mode `"open"`) is passed to `createMFEntry`'s `onBeforeMount`, so the remote can inject its own styles:
+
+```tsx
+export const register = createMFEntry(
+  CheckoutWidget,
+  ({ shadowRoot }) => {
+    if (shadowRoot) {
+      const sheet = new CSSStyleSheet()
+      sheet.replaceSync(checkoutStyles)
+      shadowRoot.adoptedStyleSheets = [sheet]
+    }
+  },
+)
+```
+
+**Forwarding host styles into the shadow root**
+
+By default, host stylesheets (Tailwind, design system, CSS-in-JS) are not visible inside the shadow root. Use `adoptHostStyles` to forward them automatically — including sheets injected dynamically after mount:
+
+```tsx
+<MFBridgeLazy
+  register={checkoutLoader}
+  props={{ orderId }}
+  shadowDom
+  adoptHostStyles   // clones <style>/<link> from document.head + MutationObserver
+/>
+```
+
+For manual control in the remote, use the exported `forwardHostStyles` utility:
+
+```tsx
+import { forwardHostStyles } from '@mf-toolkit/mf-bridge'
+
+let stop: (() => void) | undefined
+export const register = createMFEntry(
+  CheckoutWidget,
+  ({ shadowRoot }) => {
+    if (shadowRoot) stop = forwardHostStyles(shadowRoot)
+  },
+  () => { stop?.() },
+)
+```
+
+CSS custom properties (CSS variables) inherit through shadow DOM natively — no forwarding needed.
+
+---
+
+## Framework-agnostic remotes
+
+Use `defineMFEntry` when the remote is built with Vue, Angular, Svelte, or vanilla JS. The host side (`MFBridge` / `MFBridgeLazy`) does not change.
+
+**Import:** `@mf-toolkit/mf-bridge/define-entry`
+
+```tsx
+import { defineMFEntry } from '@mf-toolkit/mf-bridge/define-entry'
+
+// Vue 3 remote
+export const register = defineMFEntry({
+  mount({ mountPointer, props }) {
+    const app = createApp(MyWidget, props)
+    app.mount(mountPointer)
+    return app
+  },
+  update(app, props) {
+    // Update reactive state, or unmount+remount if needed
+    app.config.globalProperties.$props = props
+  },
+  unmount(app) {
+    app.unmount()
+  },
+})
+```
+
+```tsx
+// Vanilla JS remote with events and commands
+export const register = defineMFEntry({
+  mount({ mountPointer, props, emit, onCommand }) {
+    const el = document.createElement('div')
+    el.textContent = props.label
+    el.addEventListener('click', () => emit('clicked'))
+    onCommand((type) => { if (type === 'reset') { el.textContent = '' } })
+    mountPointer.appendChild(el)
+    return el
+  },
+  update(el, props) { el.textContent = props.label },
+  unmount(el, mountPointer) { mountPointer.removeChild(el) },
+})
+```
+
+`mount` receives the same opts as `createMFEntry`'s `onBeforeMount` — `mountPointer`, `shadowRoot`, `props`, `namespace`, `emit`, `onCommand`. It returns an opaque instance value forwarded to `update` and `unmount`.
+
+The host mounts it identically:
+
+```tsx
+<MFBridgeLazy
+  register={() => import('vue-checkout/entry').then(m => m.register)}
+  props={{ orderId }}
+  fallback={<Spinner />}
+/>
+```
 
 ---
 
@@ -468,12 +625,11 @@ type CheckoutProps = MFLazyProps<typeof checkoutLoader>
 
 ## Namespace configuration
 
-By default, prop-streaming events use the `mfbridge` namespace prefix:
-`mfbridge:propsChanged`.
+Each `MFBridge` / `MFBridgeLazy` instance gets a **unique auto-generated namespace** (e.g. `mfbridge-1`, `mfbridge-2`) when the `namespace` prop is omitted. This means debug logs clearly distinguish concurrent instances of the same MF, and there is no configuration needed when mounting the same remote multiple times.
 
-When multiple microfrontends are mounted on the same page, all using `mf-bridge`, this is safe — each mount point is a distinct DOM element, so events don't leak between them.
+Events are always element-scoped (non-bubbling `CustomEvent`s on the specific mount-point element), so two instances cannot hear each other's events regardless of namespace.
 
-If you need an explicit namespace (e.g. for debugging or for integration with other event systems), set it consistently on both sides:
+If you need an explicit namespace (e.g. for integration with other event systems or for predictable debug prefixes), set it via the prop:
 
 ```tsx
 // Remote side
@@ -494,7 +650,7 @@ The `namespace` prop on `MFBridge`/`MFBridgeLazy` is forwarded to `register()` a
 
 ## API reference
 
-### `createMFEntry(Component, onBeforeMount?, onBeforeUnmount?, onError?)` — remote side
+### `createMFEntry(Component, onBeforeMount?, onBeforeUnmount?, onError?)` — React remote side
 
 **Import:** `@mf-toolkit/mf-bridge/entry`
 
@@ -505,7 +661,9 @@ function createMFEntry<T extends ComponentType<any>>(
     mountPointer: HTMLElement
     props: ComponentProps<T>
     namespace: string
+    shadowRoot: ShadowRoot | undefined
     emit: (type: string, payload?: unknown) => void
+    onCommand: (handler: (type: string, payload: unknown) => void) => () => void
   }) => void,
   onBeforeUnmount?: (opts: { mountPointer: HTMLElement }) => void,
   onError?: (err: Error) => void,
@@ -515,13 +673,37 @@ function createMFEntry<T extends ComponentType<any>>(
 | Parameter | Type | Description |
 |---|---|---|
 | `Component` | `ComponentType<P>` | React component to expose to the host |
-| `onBeforeMount` | `(opts) => void` | Called once before `createRoot`. Use for DI setup and wiring `emit`. |
-| `onBeforeMount opts.namespace` | `string` | The CustomEvent namespace in use (matches the host's `namespace` prop). |
-| `onBeforeMount opts.emit` | `(type, payload?) => void` | Sends a custom event to the host. Received by the host via `onEvent`. |
-| `onBeforeUnmount` | `(opts) => void` | Called just before `root.unmount()`. Use to clean up DI. |
-| `onError` | `(err: Error) => void` | Called when the component throws during render. The mount point renders `null`; the boundary resets on the next `propsChanged`. |
+| `onBeforeMount` | `(opts) => void` | Called once before `createRoot`. Use for DI setup, style injection, and event wiring. |
+| `onBeforeMount opts.namespace` | `string` | The CustomEvent namespace in use. |
+| `onBeforeMount opts.shadowRoot` | `ShadowRoot \| undefined` | Provided when host enables `shadowDom`. Use to inject component styles. |
+| `onBeforeMount opts.emit` | `(type, payload?) => void` | Sends a custom event to the host via `onEvent`. |
+| `onBeforeMount opts.onCommand` | `(handler) => () => void` | Subscribes to commands from the host via `commandRef`. Auto-cleaned on unmount. |
+| `onBeforeUnmount` | `(opts) => void` | Called just before `root.unmount()`. |
+| `onError` | `(err: Error) => void` | Called when the component throws. Renders `null`; boundary resets on next `propsChanged`. |
 
 Returns a `RegisterFn<P>` — a function the host calls at mount time.
+
+---
+
+### `defineMFEntry(config)` — framework-agnostic remote side
+
+**Import:** `@mf-toolkit/mf-bridge/define-entry`
+
+```typescript
+function defineMFEntry<P extends object = object, I = unknown>(config: {
+  mount: (opts: MFMountOpts<P>) => I
+  update?: (instance: I, props: P) => void
+  unmount: (instance: I, mountPointer: HTMLElement) => void
+}): RegisterFn<P>
+```
+
+| Config key | Type | Description |
+|---|---|---|
+| `mount` | `(opts) => I` | Called on mount. `opts` is identical to `createMFEntry`'s `onBeforeMount` opts. Returns an opaque instance forwarded to `update` and `unmount`. |
+| `update` | `(instance, props) => void` | Called when the host streams new props. Omit if your framework handles reactivity internally. |
+| `unmount` | `(instance, mountPointer) => void` | Teardown — destroy the app, remove DOM nodes, cancel subscriptions. |
+
+Returns a `RegisterFn<P>` compatible with `MFBridge` and `MFBridgeLazy`.
 
 ---
 
@@ -543,39 +725,27 @@ This is the type of the value exported from the remote's entry module. The host 
 
 **Import:** `@mf-toolkit/mf-bridge`
 
-```typescript
-function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>(props: {
-  register: T
-  props: MFLazyProps<T>
-  fallback?: ReactNode
-  tagName?: string
-  namespace?: string
-  onLoad?: () => void
-  onError?: (err: unknown, retry: () => void) => void
-  onStatusChange?: (status: MFBridgeStatus) => void
-  onEvent?: (type: string, payload: unknown) => void
-  debug?: boolean
-  retryCount?: number
-  retryDelay?: number
-  timeout?: number
-}): JSX.Element
-```
-
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `register` | `() => Promise<RegisterFn<P>>` | — | Async factory. Re-evaluated when reference changes. Pre-warm with `preloadMF`. |
 | `props` | `MFLazyProps<typeof register>` | — | Props forwarded to the remote component. Inferred from `register`. |
-| `fallback` | `ReactNode` | `null` | Rendered while loading or after permanent failure. |
+| `fallback` | `ReactNode` | `null` | Rendered while loading. |
+| `errorFallback` | `ReactNode` | — | Rendered when all load attempts fail. Falls back to `fallback` if omitted. |
 | `tagName` | `string` | `'mf-bridge'` | HTML tag for the mount-point element. |
-| `namespace` | `string` | `'mfbridge'` | CustomEvent namespace for prop streaming. |
+| `namespace` | `string` | auto | CustomEvent namespace. Auto-generated unique value per instance if omitted. |
 | `onLoad` | `() => void` | — | Called once the remote module resolves successfully. |
-| `onError` | `(err, retry) => void` | — | Called after all auto-retries fail. Second arg is a callback to trigger a manual retry. |
-| `onStatusChange` | `(status: MFBridgeStatus) => void` | — | Called on every status transition: `'loading'` → `'ready'` or `'error'`. |
+| `onError` | `(err, retry) => void` | — | Called after all retries fail. Second arg triggers a manual retry. |
+| `onStatusChange` | `(status) => void` | — | `'loading'` → `'ready'` or `'error'` on every transition. |
 | `onEvent` | `(type, payload) => void` | — | Called when the remote emits a custom event via `emit()`. |
-| `debug` | `boolean` | `false` | Enable `console.debug` logging (`load:start/retry/ok/error`). |
+| `commandRef` | `{ current: fn \| null }` | — | Populated with a `send(type, payload?)` function after mount. |
+| `mountRef` | `{ current: HTMLElement \| null }` | — | Populated with the mount-point element after mount. |
+| `containerProps` | `HTMLAttributes` | — | HTML attributes forwarded to the mount-point element (`id`, `style`, `data-*`, etc.). |
+| `debug` | `boolean` | `false` | Enable `console.debug` lifecycle logging. |
 | `retryCount` | `number` | `0` | Additional automatic load attempts after the first failure. |
 | `retryDelay` | `number` | `0` | Milliseconds between automatic retries. |
-| `timeout` | `number` | — | Per-attempt timeout in ms. Fires `onError`/retry if exceeded. |
+| `timeout` | `number` | — | Per-attempt timeout in ms. |
+| `shadowDom` | `boolean` | `false` | Render inside a Shadow DOM for CSS isolation. |
+| `adoptHostStyles` | `boolean` | `false` | Forward host `<style>`/`<link>` into the shadow root (requires `shadowDom`). |
 
 ---
 
@@ -583,25 +753,19 @@ function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>(props: {
 
 **Import:** `@mf-toolkit/mf-bridge`
 
-```typescript
-function MFBridge<T extends RegisterFn<any>>(props: {
-  register: T
-  props: MFProps<T>
-  tagName?: string
-  namespace?: string
-  debug?: boolean
-  onEvent?: (type: string, payload: unknown) => void
-}): JSX.Element
-```
-
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `register` | `RegisterFn<P>` | — | Synchronous register function from the remote. |
 | `props` | `MFProps<typeof register>` | — | Props forwarded to the remote component. Inferred from `register`. |
 | `tagName` | `string` | `'mf-bridge'` | HTML tag used as the mount-point element. |
-| `namespace` | `string` | `'mfbridge'` | CustomEvent namespace for prop streaming. |
+| `namespace` | `string` | auto | CustomEvent namespace. Auto-generated unique value per instance if omitted. |
 | `debug` | `boolean` | `false` | Enable `console.debug` logging (`mount`, `propsChanged`, `unmount`). |
 | `onEvent` | `(type, payload) => void` | — | Called when the remote emits a custom event via `emit()`. |
+| `commandRef` | `{ current: fn \| null }` | — | Populated with a `send(type, payload?)` function after mount. |
+| `mountRef` | `{ current: HTMLElement \| null }` | — | Populated with the mount-point element after mount. |
+| `containerProps` | `HTMLAttributes` | — | HTML attributes forwarded to the mount-point element. |
+| `shadowDom` | `boolean` | `false` | Render inside a Shadow DOM for CSS isolation. |
+| `adoptHostStyles` | `boolean` | `false` | Forward host stylesheets into the shadow root (requires `shadowDom`). |
 
 ---
 
@@ -655,6 +819,20 @@ type MFProps<T> = T extends RegisterFn<infer P> ? P : never
 // Extracts props type from a lazy loader () => Promise<RegisterFn<P>>
 type MFLazyProps<T> = T extends () => Promise<RegisterFn<infer P>> ? P : never
 ```
+
+---
+
+### `forwardHostStyles(shadowRoot)` — style forwarding utility
+
+**Import:** `@mf-toolkit/mf-bridge`
+
+```typescript
+function forwardHostStyles(shadowRoot: ShadowRoot): () => void
+```
+
+Clones existing `<style>` and `<link rel="stylesheet">` elements from `document.head` into the shadow root, shares `document.adoptedStyleSheets`, and attaches a `MutationObserver` that forwards any stylesheets injected after mount (lazy CSS-in-JS, Tailwind CDN).
+
+Returns a cleanup function — call it in `onBeforeUnmount` or let `adoptHostStyles` handle it automatically.
 
 ---
 
@@ -870,26 +1048,29 @@ export function Checkout({ orderId }: { orderId: string }) {
 | Type-safe `importRemote` wrapper | Separate package: `@mf-toolkit/mf-loader` |
 | URL resolution / DEV port scanning | Separate package: `@mf-toolkit/mf-loader` |
 | Remote→Host events (`emit` / `onEvent`) | ✅ Shipped in v0.2 |
+| Host→Remote commands (`commandRef` / `onCommand`) | ✅ Shipped in v0.2 |
 | Load status tracking (`onStatusChange`) | ✅ Shipped in v0.2 |
 | Manual retry callback in `onError` | ✅ Shipped in v0.2 |
 | Per-attempt load `timeout` | ✅ Shipped in v0.2 |
-| `iframe` transport mode | Planned — hard UI isolation between host and remote |
+| CSS isolation via Shadow DOM (`shadowDom`, `adoptHostStyles`) | ✅ Shipped in v0.3 |
+| Framework-agnostic remotes (`defineMFEntry`) | ✅ Shipped in v0.3 |
+| `iframe` transport mode | Planned — hard UI isolation with a separate document |
 
 ---
 
 ## When not to use this package
 
 - Your remote component is in the **same webpack bundle** as the host — use `React.lazy` or a direct import.
-- You need **full UI isolation** (separate CSS scope, separate document) — consider an `iframe`-based approach instead (planned for v0.2).
-- Your MF framework is not React, or the remote does not use `createRoot` — the bridge assumes React 18+ on both sides.
+- You need **full UI isolation with a separate document** — consider an `iframe`-based approach.
 
 ---
 
 ## Known limitations
 
-- **React 18+ required on both sides.** The bridge calls `createRoot` inside `createMFEntry`. React 17 and below are not supported.
-- **Props are compared by reference.** The bridge sends a `propsChanged` event on every render where the `props` object reference changes. If you create a new object on every render (`props={{ a: 1 }}`), the remote re-renders on every host render. Stabilize with `useMemo` or move the object outside the component.
-- **Fallback flicker on fast connections.** `MFBridgeLazy` shows the fallback until the module resolves. On fast connections the fallback may flash for a single frame. Wrap in `Suspense` at a higher level to coalesce loading states if needed.
+- **React 18+ required on the host side.** `MFBridge` and `MFBridgeLazy` are React components. The remote can be any framework via `defineMFEntry`.
+- **`createMFEntry` requires React 18+ on the remote side.** Use `defineMFEntry` for non-React remotes.
+- **Props are compared by reference.** The bridge sends a `propsChanged` event on every render where the `props` object reference changes. Stabilize with `useMemo` or move the object outside the component.
+- **Fallback flicker on fast connections.** `MFBridgeLazy` shows the fallback until the module resolves. On fast connections the fallback may flash for a single frame.
 - **SSR.** The bridge mounts in `useEffect`, which does not run on the server. The mount-point element renders empty on the server — plan your fallback and hydration accordingly. If `RegisterFn` is somehow called in a non-DOM environment, it returns a no-op instead of crashing.
 
 ---

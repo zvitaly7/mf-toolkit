@@ -7,6 +7,63 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.3.0] — 2026-04-19
+
+### Added
+
+- **`defineMFEntry`** — framework-agnostic alternative to `createMFEntry`.
+  Accepts `{ mount, update, unmount }` callbacks instead of a React component,
+  enabling Vue, Angular, Svelte, and vanilla JS remotes to integrate with
+  `MFBridge` / `MFBridgeLazy` without any React dependency on the remote side.
+  Available at `@mf-toolkit/mf-bridge/define-entry`.
+
+- **`shadowDom` prop** on `MFBridge` and `MFBridgeLazy` — attaches a Shadow DOM
+  to the mount-point element and renders the remote inside it. Provides native
+  CSS isolation: host styles do not bleed into the MF and vice versa. The shadow
+  root is passed to `createMFEntry`'s `onBeforeMount` (and `defineMFEntry`'s
+  `mount`) so the remote can inject its own styles.
+
+- **`adoptHostStyles` prop** on `MFBridge` and `MFBridgeLazy` — when used with
+  `shadowDom`, automatically clones all `<style>` and `<link rel="stylesheet">`
+  elements from `document.head` into the shadow root and attaches a
+  `MutationObserver` to forward stylesheets injected after mount (lazy CSS-in-JS,
+  Tailwind CDN). Cleaned up automatically on unmount.
+
+- **`forwardHostStyles(shadowRoot)`** — exported utility. Called internally by
+  `adoptHostStyles`; also available for manual use inside `onBeforeMount` when
+  the remote wants full control over style forwarding.
+
+- **`mountRef` prop** on `MFBridge` and `MFBridgeLazy` — ref populated with the
+  mount-point `HTMLElement` after mount and cleared on unmount.
+
+- **`containerProps` prop** on `MFBridge` and `MFBridgeLazy` — HTML attributes
+  forwarded to the mount-point element (`id`, `style`, `data-*`, ARIA, etc.).
+
+- **Auto-generated unique namespace** — when the `namespace` prop is omitted,
+  each `MFBridge` / `MFBridgeLazy` instance receives a stable unique namespace
+  (`mfbridge-1`, `mfbridge-2`, …) so debug logs distinguish concurrent instances
+  of the same MF. Explicit `namespace` prop is respected as-is.
+
+- **`onCommand` in `createMFEntry` `onBeforeMount` opts** — the remote can
+  subscribe to imperative commands sent by the host via `commandRef`. All
+  subscriptions are cleaned up automatically on unmount.
+
+- **`shadowRoot` in `createMFEntry` `onBeforeMount` opts** — provided when the
+  host enables `shadowDom`, so the remote can inject its own styles via
+  `adoptedStyleSheets` or a `<style>` element.
+
+- **`./define-entry` package export** — tree-shakeable entry point for non-React
+  remotes. Importing from `@mf-toolkit/mf-bridge/define-entry` does not include
+  React or host-side code.
+
+### Changed
+
+- `namespace` prop on `MFBridge` and `MFBridgeLazy` is now optional with no
+  explicit default — each instance auto-generates a unique stable namespace.
+  Existing code passing an explicit `namespace` is unaffected.
+
+---
+
 ## [0.2.0] — 2026-04-10
 
 ### Added

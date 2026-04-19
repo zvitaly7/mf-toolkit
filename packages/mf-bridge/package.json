@@ -1,7 +1,7 @@
 {
   "name": "@mf-toolkit/mf-bridge",
-  "version": "0.2.0",
-  "description": "Type-safe bridge for mounting microfrontend React components into a host shell — with lazy loading, prop streaming, remote→host events, status tracking, and fallback.",
+  "version": "0.3.0",
+  "description": "Mount microfrontend components from any Module Federation remote — lazy loading, prop streaming, bidirectional events, CSS isolation via Shadow DOM, and framework-agnostic remote support.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "homepage": "https://github.com/zvitaly7/mf-toolkit/tree/main/packages/mf-bridge",
@@ -15,6 +15,10 @@
     "./entry": {
       "types": "./dist/entry.d.ts",
       "default": "./dist/entry.js"
+    },
+    "./define-entry": {
+      "types": "./dist/define-entry.d.ts",
+      "default": "./dist/define-entry.js"
     }
   },
   "files": [
@@ -26,15 +30,21 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "microfrontend",
     "module-federation",
     "react",
+    "vue",
+    "angular",
+    "svelte",
     "bridge",
     "prop-streaming",
-    "lazy-loading"
+    "lazy-loading",
+    "shadow-dom",
+    "css-isolation"
   ],
   "repository": {
     "type": "git",
