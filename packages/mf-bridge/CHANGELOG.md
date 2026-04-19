@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.4.0] — 2026-04-19
+
+### Added
+
+- **`MFBridgeHydrated`** — host-side client component for SSR + prop streaming.
+  After a fragment is server-rendered by `@mf-toolkit/mf-ssr`'s `MFBridgeSSR`,
+  `MFBridgeHydrated` takes over on the client: it finds the
+  `[data-mf-namespace]` container and streams prop updates to the already-hydrated
+  remote component via `DOMEventBus`. Supports `onEvent`, `commandRef`, and `debug`.
+  Available from the main export.
+
+- **`hydrateWithBridge`** — remote client-bundle counterpart to `MFBridgeHydrated`.
+  Export path: `@mf-toolkit/mf-bridge/hydrate`.
+  Locates the `[data-mf-namespace]` container, calls `React.hydrateRoot` on
+  `[data-mf-app]`, and subscribes to `propsChanged` events — calling
+  `root.render()` on every update from the host. Also forwards `command` events
+  to an optional `onCommand` handler.
+
+- **`./hydrate` package export** — tree-shakeable entry point for the remote
+  client bundle. Importing from `@mf-toolkit/mf-bridge/hydrate` pulls in
+  `react-dom/client` but none of the host-side code.
+
+---
+
 ## [0.3.0] — 2026-04-19
 
 ### Added

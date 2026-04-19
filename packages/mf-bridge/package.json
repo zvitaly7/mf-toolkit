@@ -1,7 +1,7 @@
 {
   "name": "@mf-toolkit/mf-bridge",
-  "version": "0.3.0",
-  "description": "Mount microfrontend components from any Module Federation remote — lazy loading, prop streaming, bidirectional events, CSS isolation via Shadow DOM, and framework-agnostic remote support.",
+  "version": "0.4.0",
+  "description": "Mount microfrontend components from any Module Federation remote — lazy loading, prop streaming, bidirectional events, CSS isolation via Shadow DOM, framework-agnostic remote support, and SSR hydration bridge.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "homepage": "https://github.com/zvitaly7/mf-toolkit/tree/main/packages/mf-bridge",
@@ -19,6 +19,10 @@
     "./define-entry": {
       "types": "./dist/define-entry.d.ts",
       "default": "./dist/define-entry.js"
+    },
+    "./hydrate": {
+      "types": "./dist/hydrate.d.ts",
+      "default": "./dist/hydrate.js"
     }
   },
   "files": [
@@ -44,7 +48,8 @@
     "prop-streaming",
     "lazy-loading",
     "shadow-dom",
-    "css-isolation"
+    "css-isolation",
+    "ssr-hydration"
   ],
   "repository": {
     "type": "git",
