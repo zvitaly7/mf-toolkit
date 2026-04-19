@@ -25,46 +25,67 @@ function cleanup(el: HTMLElement) {
 // ─── mount / unmount ─────────────────────────────────────────────────────────
 
 describe('defineMFEntry — mount and unmount', () => {
-  it('calls mount with mountPointer, props, namespace, shadowRoot', () => {
-    const mount = vi.fn(() => null)
-    const register = defineMFEntry({ mount, unmount: () => {} })
-
-    const el = makeMount()
-    register({ mountPointer: el, props: { count: 1 }, namespace: 'test' })
-
-    expect(mount).toHaveBeenCalledOnce()
-    expect(mount.mock.calls[0][0]).toMatchObject({
-      mountPointer: el,
-      props: { count: 1 },
-      namespace: 'test',
-      shadowRoot: undefined,
+  it('actually renders content into the DOM on mount', () => {
+    const register = defineMFEntry<{ label: string }, HTMLSpanElement>({
+      mount({ mountPointer, props }) {
+        const span = document.createElement('span')
+        span.textContent = props.label
+        mountPointer.appendChild(span)
+        return span
+      },
+      unmount(span, mp) { mp.removeChild(span) },
     })
 
+    const el = makeMount()
+    register({ mountPointer: el, props: { label: 'hello' }, namespace: 'test' })
+
+    expect(el.textContent).toBe('hello')
     cleanup(el)
   })
 
-  it('passes shadowRoot when provided', () => {
-    const mount = vi.fn(() => null)
-    const register = defineMFEntry({ mount, unmount: () => {} })
+  it('passes shadowRoot when provided and mount receives it', () => {
+    let receivedRoot: ShadowRoot | undefined
+    const register = defineMFEntry({
+      mount({ mountPointer, shadowRoot }) {
+        receivedRoot = shadowRoot
+        if (shadowRoot) {
+          const div = document.createElement('div')
+          div.textContent = 'in shadow'
+          shadowRoot.appendChild(div)
+        }
+        return null
+      },
+      unmount: () => {},
+    })
 
     const el = makeMount()
     const shadow = el.attachShadow({ mode: 'open' })
     register({ mountPointer: el, shadowRoot: shadow, props: {}, namespace: 'test' })
 
-    expect(mount.mock.calls[0][0].shadowRoot).toBe(shadow)
+    expect(receivedRoot).toBe(shadow)
+    // Content is inside shadow root, not in the light DOM
+    expect(el.shadowRoot?.textContent).toBe('in shadow')
+    expect(el.textContent).toBe('')
     cleanup(el)
   })
 
-  it('calls unmount with the instance returned by mount', () => {
-    const instance = { destroy: vi.fn() }
-    const unmount = vi.fn()
-    const register = defineMFEntry({ mount: () => instance, unmount })
+  it('calls unmount with the instance returned by mount and removes DOM', () => {
+    const register = defineMFEntry<object, HTMLDivElement>({
+      mount({ mountPointer }) {
+        const div = document.createElement('div')
+        div.setAttribute('data-testid', 'widget')
+        mountPointer.appendChild(div)
+        return div
+      },
+      unmount(div, mp) { mp.removeChild(div) },
+    })
 
     const el = makeMount()
     const teardown = register({ mountPointer: el, props: {}, namespace: 'test' })
-    teardown()
+    expect(el.querySelector('[data-testid="widget"]')).toBeTruthy()
 
-    expect(unmount).toHaveBeenCalledWith(instance, el)
+    teardown()
+    expect(el.querySelector('[data-testid="widget"]')).toBeNull()
     cleanup(el)
   })
 
