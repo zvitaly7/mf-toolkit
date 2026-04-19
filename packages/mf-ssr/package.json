@@ -1,6 +1,6 @@
 {
   "name": "@mf-toolkit/mf-ssr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Server-side rendering for microfrontends — edge-native streaming fragment composition for polyrepo Module Federation.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
