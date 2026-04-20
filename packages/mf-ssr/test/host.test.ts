@@ -323,4 +323,22 @@ describe('MFBridgeSSR — url mode', () => {
     )
     expect((await findByTestId('err')).textContent).toBe('503')
   })
+
+  it('renders errorFallback when props payload exceeds 4096-char URL limit', async () => {
+    // Fetch should NOT be called — error fires synchronously before the request.
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { findByTestId } = render(
+      createElement(MFBridgeSSR, {
+        url: 'http://frag/',
+        // ~5 KB of data, far over the 4 096-char guard
+        props: { huge: 'x'.repeat(5000) },
+        errorFallback: createElement('span', { 'data-testid': 'err' }, 'too-large'),
+      }),
+    )
+    expect((await findByTestId('err')).textContent).toBe('too-large')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
 })
