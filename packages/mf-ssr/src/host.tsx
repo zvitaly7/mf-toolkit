@@ -18,12 +18,17 @@ import { safeJsonStringify } from './utils.js'
 
 // ─── Error boundary ──────────────────────────────────────────────────────────
 
-interface EBProps { fallback: ReactNode; children?: ReactNode }
+interface EBProps {
+  fallback: ReactNode
+  children?: ReactNode
+  onError?: (error: Error) => void
+}
 interface EBState { hasError: boolean }
 
 class MFBridgeSSRErrorBoundary extends Component<EBProps, EBState> {
   state: EBState = { hasError: false }
   static getDerivedStateFromError(): EBState { return { hasError: true } }
+  componentDidCatch(error: Error): void { this.props.onError?.(error) }
   render(): ReactNode {
     return this.state.hasError ? this.props.fallback : this.props.children
   }
@@ -61,6 +66,8 @@ interface UrlModeProps<P extends object> {
   props: P
   namespace?: string
   timeout: number
+  fetchOptions?: Omit<RequestInit, 'signal'>
+  cacheKey?: string
   onEvent?: (type: string, payload: unknown) => void
   commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
 }
@@ -69,7 +76,10 @@ interface UrlModeProps<P extends object> {
 // Most edge runtimes cap URLs at 8 KB; 4 KB is a conservative safe limit.
 const MAX_PROPS_URL_BYTES = 4096
 
-function fetchFragmentHtml<P>(url: string, props: P, timeout: number): TaggedPromise<string> {
+function fetchFragmentHtml<P>(
+  url: string, props: P, timeout: number,
+  fetchOptions?: Omit<RequestInit, 'signal'>,
+): TaggedPromise<string> {
   const encoded = encodeURIComponent(JSON.stringify(props))
   const fullUrl = `${url}?props=${encoded}`
   if (fullUrl.length > MAX_PROPS_URL_BYTES) {
@@ -84,6 +94,7 @@ function fetchFragmentHtml<P>(url: string, props: P, timeout: number): TaggedPro
     return rejected
   }
   return fetch(fullUrl, {
+    ...fetchOptions,
     signal: AbortSignal.timeout(timeout),
   }).then(async (res) => {
     if (!res.ok) throw new Error(`MFBridgeSSR: ${url} → ${res.status}`)
@@ -123,8 +134,10 @@ export function clearFragmentCache(): void {
 
 function getFragmentHtml<P>(
   url: string, initialProps: P, timeout: number,
+  fetchOptions?: Omit<RequestInit, 'signal'>,
+  cacheKey?: string,
 ): TaggedPromise<string> {
-  const key = `${url}?${safeJsonStringify(initialProps)}#${timeout}`
+  const key = `${url}?${safeJsonStringify(initialProps)}#${timeout}#${cacheKey ?? ''}`
   const cached = fragmentCache.get(key)
   if (cached) return cached
 
@@ -133,7 +146,7 @@ function getFragmentHtml<P>(
     fragmentCache.delete(fragmentCache.keys().next().value as string)
   }
 
-  const promise = fetchFragmentHtml(url, initialProps, timeout)
+  const promise = fetchFragmentHtml(url, initialProps, timeout, fetchOptions)
 
   // Pre-rejected promises (e.g. URL-too-large) already have _status set
   // synchronously — don't cache them so the app can fix props and retry.
@@ -144,7 +157,7 @@ function getFragmentHtml<P>(
 }
 
 function UrlMode<P extends object>({
-  url, props, namespace, timeout, onEvent, commandRef,
+  url, props, namespace, timeout, fetchOptions, cacheKey, onEvent, commandRef,
 }: UrlModeProps<P>): ReactElement {
   // Use the props from the very first render as the "initial" fetch key. Once
   // the fiber commits, useRef preserves it across updates. Before commit,
@@ -157,7 +170,9 @@ function UrlMode<P extends object>({
   const onEventRef = useRef(onEvent); onEventRef.current = onEvent
   const commandRefRef = useRef(commandRef); commandRefRef.current = commandRef
 
-  const html = readPromise(getFragmentHtml(url, initialPropsRef.current, timeout))
+  const html = readPromise(
+    getFragmentHtml(url, initialPropsRef.current, timeout, fetchOptions, cacheKey),
+  )
 
   useEffect(() => {
     if (!namespace) return
@@ -283,7 +298,7 @@ function LoaderMode<P extends object>({ loader, props, timeout }: LoaderModeProp
  * />
  */
 export function MFBridgeSSR<P extends object>(props: MFBridgeSSRProps<P>): ReactElement {
-  const { fallback = null, errorFallback = null, timeout = 3000 } = props
+  const { fallback = null, errorFallback = null, timeout = 3000, onError } = props
 
   const inner = props.loader
     ? createElement(LoaderMode<P>, { loader: props.loader, props: props.props, timeout })
@@ -292,13 +307,15 @@ export function MFBridgeSSR<P extends object>(props: MFBridgeSSRProps<P>): React
         props: props.props,
         namespace: props.namespace,
         timeout,
+        fetchOptions: props.fetchOptions,
+        cacheKey: props.cacheKey,
         onEvent: props.onEvent,
         commandRef: props.commandRef,
       })
 
   return createElement(
     MFBridgeSSRErrorBoundary,
-    { fallback: errorFallback ?? fallback },
+    { fallback: errorFallback ?? fallback, onError },
     createElement(Suspense, { fallback }, inner),
   )
 }
