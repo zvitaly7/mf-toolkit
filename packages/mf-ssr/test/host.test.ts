@@ -4,10 +4,10 @@
  * Tests for MFBridgeSSR — the main client-boundary SSR component.
  * Covers loader mode (React.lazy) and url mode (fetch + DOMEventBus bridge).
  */
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import { createElement, useState } from 'react'
-import { MFBridgeSSR, __clearFragmentCache } from '../src/host.js'
+import { MFBridgeSSR, __clearFragmentCache, preloadFragment } from '../src/host.js'
 import { DOMEventBus } from '@mf-toolkit/mf-bridge'
 
 afterEach(() => {
@@ -414,5 +414,114 @@ describe('MFBridgeSSR — url mode', () => {
 
     // Two different cacheKeys → two separate fetches
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ─── debug mode ──────────────────────────────────────────────────────────────
+
+describe('MFBridgeSSR — debug mode', () => {
+  let consoleSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => { consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {}) })
+  afterEach(() => { consoleSpy.mockRestore() })
+
+  it('logs fetch lifecycle when debug=true (url mode)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: () => Promise.resolve(FRAG_HTML),
+    }))
+
+    const { findByText } = render(
+      createElement(MFBridgeSSR, {
+        url: 'http://frag/',
+        props: { n: 1 },
+        namespace: 'dbg',
+        debug: true,
+      }),
+    )
+    await findByText('content')
+
+    const calls = consoleSpy.mock.calls.map((c) => c[1] as string)
+    expect(calls.some((m) => m === 'fetching fragment')).toBe(true)
+    expect(calls.some((m) => m === 'fragment fetched')).toBe(true)
+    expect(calls.some((m) => m === 'url-mode mounted')).toBe(true)
+  })
+
+  it('does not log when debug is omitted', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: () => Promise.resolve(FRAG_HTML),
+    }))
+
+    const { findByText } = render(
+      createElement(MFBridgeSSR, { url: 'http://frag/', props: {}, namespace: 'no-dbg' }),
+    )
+    await findByText('content')
+    expect(consoleSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ─── retry ───────────────────────────────────────────────────────────────────
+
+describe('MFBridgeSSR — retryCount', () => {
+  it('succeeds on second attempt when first fetch fails', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValue({ ok: true, text: () => Promise.resolve(FRAG_HTML) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { findByText } = render(
+      createElement(MFBridgeSSR, {
+        url: 'http://retry-ok/',
+        props: { n: 1 },
+        namespace: 'r',
+        retryCount: 1,
+        retryDelay: 0,
+      }),
+    )
+
+    await findByText('content')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows errorFallback after all retries exhausted', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')))
+
+    const { findByTestId } = render(
+      createElement(MFBridgeSSR, {
+        url: 'http://always-fail/',
+        props: {},
+        retryCount: 2,
+        retryDelay: 0,
+        errorFallback: createElement('span', { 'data-testid': 'err' }, 'failed'),
+      }),
+    )
+    expect((await findByTestId('err')).textContent).toBe('failed')
+  })
+})
+
+// ─── preloadFragment ──────────────────────────────────────────────────────────
+
+describe('preloadFragment', () => {
+  it('warms the cache so MFBridgeSSR makes no additional fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, text: () => Promise.resolve(FRAG_HTML),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    // Preload before rendering
+    preloadFragment('http://preload/', { n: 42 })
+
+    // Small tick to let the fetch resolve
+    await act(async () => {})
+
+    const { findByText } = render(
+      createElement(MFBridgeSSR, {
+        url: 'http://preload/',
+        props: { n: 42 },
+        namespace: 'pre',
+      }),
+    )
+    await findByText('content')
+    // Only the preload fetch — the component render hits the warm cache
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
