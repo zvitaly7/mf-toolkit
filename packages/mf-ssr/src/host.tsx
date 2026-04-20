@@ -1,59 +1,257 @@
-import { Suspense, createElement, type ReactElement } from 'react'
+'use client'
+
+import {
+  Component,
+  Suspense,
+  createElement,
+  lazy,
+  useEffect,
+  useRef,
+  type ComponentType,
+  type LazyExoticComponent,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
+import { DOMEventBus } from '@mf-toolkit/mf-bridge'
 import type { MFBridgeSSRProps } from './types.js'
 
-export function MFBridgeSSR<P extends object>(props: MFBridgeSSRProps<P>): ReactElement {
-  return createElement(
-    Suspense,
-    { fallback: props.fallback ?? null },
-    // @ts-expect-error — async RSC: Promise return is not yet in public React types
-    createElement(MFBridgeSSRFetcher, props),
-  )
+// ─── Error boundary ──────────────────────────────────────────────────────────
+
+interface EBProps { fallback: ReactNode; children?: ReactNode }
+interface EBState { hasError: boolean }
+
+class MFBridgeSSRErrorBoundary extends Component<EBProps, EBState> {
+  state: EBState = { hasError: false }
+  static getDerivedStateFromError(): EBState { return { hasError: true } }
+  render(): ReactNode {
+    return this.state.hasError ? this.props.fallback : this.props.children
+  }
 }
 
-async function MFBridgeSSRFetcher<P extends object>({
-  url,
-  loader,
-  props,
-  errorFallback = null,
-  degradeFallback,
-  timeout = 3_000,
-  namespace,
-}: MFBridgeSSRProps<P>): Promise<ReactElement | null> {
-  const fallback = (degradeFallback ?? errorFallback) as ReactElement | null
+// ─── Suspense helper (Promise → value; works on React 18 SSR and client) ─────
 
-  try {
-    if (url) {
-      // Approach 1 — fetch HTML from the remote's fragment endpoint
-      const encoded = encodeURIComponent(JSON.stringify(props))
-      const res = await fetch(`${url}?props=${encoded}`, {
-        signal: AbortSignal.timeout(timeout),
-      })
-      if (!res.ok) throw new Error(`MFBridgeSSR: ${url} → ${res.status}`)
-      const html = await res.text()
-      return createElement('div', {
-        'data-mf-host': true,
-        ...(namespace ? { 'data-mf-namespace': namespace } : {}),
-        dangerouslySetInnerHTML: { __html: html },
-      })
+type TaggedPromise<T> = Promise<T> & {
+  _status?: 'pending' | 'fulfilled' | 'rejected'
+  _value?: T
+  _reason?: unknown
+}
+
+function readPromise<T>(promise: TaggedPromise<T>): T {
+  if (promise._status === 'fulfilled') return promise._value as T
+  if (promise._status === 'rejected') throw promise._reason
+  if (!promise._status) {
+    promise._status = 'pending'
+    promise.then(
+      (value) => { promise._status = 'fulfilled'; promise._value = value },
+      (reason) => { promise._status = 'rejected'; promise._reason = reason },
+    )
+  }
+  throw promise
+}
+
+// ─── URL mode ────────────────────────────────────────────────────────────────
+// SSR: fetches fragment HTML from the remote endpoint and dumps it via
+// dangerouslySetInnerHTML. After hydration, streams prop updates (and receives
+// events/commands) via a DOMEventBus on the wrapper element. The remote bundle
+// must call `hydrateWithBridge()` to subscribe on the other end.
+
+interface UrlModeProps<P extends object> {
+  url: string
+  props: P
+  namespace?: string
+  timeout: number
+  onEvent?: (type: string, payload: unknown) => void
+  commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+}
+
+function fetchFragmentHtml<P>(url: string, props: P, timeout: number): TaggedPromise<string> {
+  const encoded = encodeURIComponent(JSON.stringify(props))
+  return fetch(`${url}?props=${encoded}`, {
+    signal: AbortSignal.timeout(timeout),
+  }).then(async (res) => {
+    if (!res.ok) throw new Error(`MFBridgeSSR: ${url} → ${res.status}`)
+    return res.text()
+  }) as TaggedPromise<string>
+}
+
+// Cache keyed by URL + serialized initial props + timeout so the fetch promise
+// survives Suspense retries (fiber state is discarded before first commit).
+// Entries persist across renders within the same module instance — bounded by
+// the set of unique (url, initial-props) combinations the app uses.
+const fragmentCache = new Map<string, TaggedPromise<string>>()
+
+/** @internal Test-only: reset the url-mode fetch cache between test cases. */
+export function __clearFragmentCache(): void {
+  fragmentCache.clear()
+}
+
+function getFragmentHtml<P>(
+  url: string, initialProps: P, timeout: number,
+): TaggedPromise<string> {
+  const key = `${url}?${JSON.stringify(initialProps)}#${timeout}`
+  const cached = fragmentCache.get(key)
+  if (cached) return cached
+  const promise = fetchFragmentHtml(url, initialProps, timeout)
+  fragmentCache.set(key, promise)
+  return promise
+}
+
+function UrlMode<P extends object>({
+  url, props, namespace, timeout, onEvent, commandRef,
+}: UrlModeProps<P>): ReactElement {
+  // Use the props from the very first render as the "initial" fetch key. Once
+  // the fiber commits, useRef preserves it across updates. Before commit,
+  // Suspense retries see the same prop values (parent didn't rerender), so the
+  // cache key is stable.
+  const initialPropsRef = useRef(props)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const busRef = useRef<DOMEventBus | null>(null)
+  const isFirstPropsEffect = useRef(true)
+  const onEventRef = useRef(onEvent); onEventRef.current = onEvent
+  const commandRefRef = useRef(commandRef); commandRefRef.current = commandRef
+
+  const html = readPromise(getFragmentHtml(url, initialPropsRef.current, timeout))
+
+  useEffect(() => {
+    if (!namespace) return
+    const el = wrapperRef.current
+    if (!el) return
+    isFirstPropsEffect.current = true
+    const bus = new DOMEventBus(el, namespace)
+    busRef.current = bus
+    if (commandRefRef.current) {
+      commandRefRef.current.current = (type, payload) =>
+        bus.send('command', { type, payload })
     }
+    const unsub = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
+      onEventRef.current?.(type, payload)
+    })
+    return () => {
+      unsub()
+      busRef.current = null
+      if (commandRefRef.current) commandRefRef.current.current = null
+    }
+  }, [namespace])
 
-    // Approach 2 — import the component on the host server and render inline.
-    // The timer is always cleared (win or lose) to avoid an orphaned setTimeout.
+  useEffect(() => {
+    if (isFirstPropsEffect.current) { isFirstPropsEffect.current = false; return }
+    busRef.current?.send('propsChanged', props)
+  }, [props])
+
+  return createElement('div', {
+    ref: wrapperRef,
+    'data-mf-host': '',
+    ...(namespace ? { 'data-mf-namespace': namespace } : {}),
+    dangerouslySetInnerHTML: { __html: html },
+  })
+}
+
+// ─── Loader mode ─────────────────────────────────────────────────────────────
+// The host imports the remote component directly (S3/CDN bundle, Module
+// Federation runtime, dynamic import). Wraps it in React.lazy so SSR streams
+// the fallback until the import resolves. Props flow naturally — when the
+// parent re-renders, the remote re-renders with new props, no bridge needed.
+
+interface LoaderModeProps<P extends object> {
+  loader: () => Promise<ComponentType<P>>
+  props: P
+  timeout: number
+}
+
+// Cache keyed by loader reference so the `lazy()` result survives Suspense
+// retries. Before first commit, React discards fiber state (including hooks),
+// so we cannot store the lazy in useRef/useMemo — it would be recreated on
+// every retry and never resolve. A module-level cache keeps the lazy stable
+// across retries. Same contract as `MFBridgeLazy.register`: pass a stable
+// loader reference (module-level or wrapped in `useCallback`).
+const lazyCache = new WeakMap<
+  () => Promise<ComponentType<object>>,
+  LazyExoticComponent<ComponentType<object>>
+>()
+
+function getLazy<P extends object>(
+  loader: () => Promise<ComponentType<P>>,
+  timeout: number,
+): LazyExoticComponent<ComponentType<P>> {
+  const key = loader as unknown as () => Promise<ComponentType<object>>
+  const cached = lazyCache.get(key)
+  if (cached) return cached as unknown as LazyExoticComponent<ComponentType<P>>
+
+  const created = lazy<ComponentType<P>>(() => {
     let timerId: ReturnType<typeof setTimeout> | undefined
-    const Component = await Promise.race([
-      loader!(),
+    return Promise.race([
+      loader().then((C) => ({ default: C })),
       new Promise<never>((_, reject) => {
         timerId = setTimeout(
           () => reject(new Error('MFBridgeSSR: loader timeout')),
           timeout,
         )
       }),
-    ]).finally(() => clearTimeout(timerId))
-
-    return createElement(Component, props)
-  } catch {
-    return fallback
-  }
+    ]).finally(() => clearTimeout(timerId)) as Promise<{ default: ComponentType<P> }>
+  })
+  lazyCache.set(key, created as unknown as LazyExoticComponent<ComponentType<object>>)
+  return created
 }
 
-export { MFBridgeSSRFetcher as _MFBridgeSSRFetcher }
+function LoaderMode<P extends object>({ loader, props, timeout }: LoaderModeProps<P>): ReactElement {
+  const LazyComp = getLazy(loader, timeout)
+  return createElement(LazyComp as unknown as ComponentType<object>, props as object)
+}
+
+// ─── Public component ────────────────────────────────────────────────────────
+
+/**
+ * Renders a microfrontend with SSR + automatic client-side prop streaming.
+ *
+ * Two modes:
+ *
+ * **1) `loader` mode** — host imports the remote component directly (S3/CDN
+ * bundle, Module Federation, dynamic import). No extra server needed. Uses
+ * `React.lazy` + `<Suspense>` so SSR streams the fallback until the import
+ * resolves. Prop updates flow as a normal React re-render.
+ *
+ * **2) `url` mode** — host fetches HTML from the remote's fragment endpoint
+ * (e.g. `GET /fragment?props=...`) during SSR and inlines it. After hydration,
+ * a `DOMEventBus` streams prop updates, commands, and events between the
+ * host's MFBridgeSSR and the remote's `hydrateWithBridge` entry.
+ *
+ * This is a **Client Component** (`'use client'`) — it renders server-side
+ * during SSR but hydrates and re-renders on the client, so parent state
+ * changes automatically propagate to the remote.
+ *
+ * @example Loader mode (inline, no extra server)
+ * <MFBridgeSSR
+ *   loader={() => import('checkout-remote').then(m => m.Widget)}
+ *   props={{ cartId, currentUser }}
+ *   fallback={<Spinner />}
+ *   errorFallback={<Error />}
+ * />
+ *
+ * @example URL mode (polyrepo, each team deploys their own endpoint)
+ * <MFBridgeSSR
+ *   url="https://checkout.acme.com/fragment"
+ *   namespace="checkout"
+ *   props={{ cartId, currentUser }}
+ *   onEvent={(type, payload) => { if (type === 'orderPlaced') navigate('/thanks') }}
+ * />
+ */
+export function MFBridgeSSR<P extends object>(props: MFBridgeSSRProps<P>): ReactElement {
+  const { fallback = null, errorFallback = null, timeout = 3000 } = props
+
+  const inner = props.loader
+    ? createElement(LoaderMode<P>, { loader: props.loader, props: props.props, timeout })
+    : createElement(UrlMode<P>, {
+        url: props.url,
+        props: props.props,
+        namespace: props.namespace,
+        timeout,
+        onEvent: props.onEvent,
+        commandRef: props.commandRef,
+      })
+
+  return createElement(
+    MFBridgeSSRErrorBoundary,
+    { fallback: errorFallback ?? fallback },
+    createElement(Suspense, { fallback }, inner),
+  )
+}
