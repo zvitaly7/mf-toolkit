@@ -71,12 +71,34 @@ describe('createMFReactFragment', () => {
     expect(html).toContain('42')
   })
 
-  it('escapes </script> in props to prevent injection', async () => {
+  it('escapes < > & and </script> in embedded props JSON (XSS safety)', async () => {
     function Widget() { return null }
     const handler = createMFReactFragment(Widget)
-    const res = await handler(makeRequest({ evil: '</script><script>alert(1)</script>' }))
+    const res = await handler(makeRequest({
+      a: '</script><script>alert(1)</script>',
+      b: '<img src=x onerror=alert(1)>',
+      c: 'a&b',
+    }))
     const html = await bodyText(res)
-    expect(html).not.toContain('</script><script>')
-    expect(html).toContain('<\\/script>')
+    // No raw angle brackets or & in the embedded JSON
+    const scriptBlock = html.match(/<script type="application\/json"[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? ''
+    expect(scriptBlock).not.toMatch(/</)
+    expect(scriptBlock).not.toMatch(/>/)
+    expect(scriptBlock).not.toMatch(/&(?!amp;)/)
+    // Escaped forms present
+    expect(scriptBlock).toContain('\\u003c')
+    expect(scriptBlock).toContain('\\u003e')
+  })
+
+  it('escapes U+2028 and U+2029 line terminators in embedded props JSON', async () => {
+    function Widget() { return null }
+    const handler = createMFReactFragment(Widget)
+    const res = await handler(makeRequest({ text: 'a\u2028b\u2029c' }))
+    const html = await bodyText(res)
+    const scriptBlock = html.match(/<script type="application\/json"[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? ''
+    expect(scriptBlock).not.toContain('\u2028')
+    expect(scriptBlock).not.toContain('\u2029')
+    expect(scriptBlock).toContain('\\u2028')
+    expect(scriptBlock).toContain('\\u2029')
   })
 })

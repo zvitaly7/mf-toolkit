@@ -1,6 +1,7 @@
 import { createElement, type ComponentType } from 'react'
 import { renderToReadableStream } from 'react-dom/server'
 import type { MFFragmentHandler } from './types.js'
+import { safeJsonStringify } from './utils.js'
 
 export interface CreateMFReactFragmentOpts {
   id?: string
@@ -20,8 +21,7 @@ export function createMFReactFragment<P extends object>(
       try { props = JSON.parse(decodeURIComponent(rawProps)) } catch {}
     }
 
-    // Escape </script> sequences to prevent XSS in JSON-in-script-tag
-    const safeJson = JSON.stringify(props).replace(/<\/script>/gi, '<\\/script>')
+    const safeJson = safeJsonStringify(props)
 
     function FragmentShell() {
       return createElement(
