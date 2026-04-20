@@ -17,6 +17,7 @@ async function MFBridgeSSRFetcher<P extends object>({
   errorFallback = null,
   degradeFallback,
   timeout = 3_000,
+  namespace,
 }: MFBridgeSSRProps<P>): Promise<ReactElement | null> {
   const fallback = (degradeFallback ?? errorFallback) as ReactElement | null
 
@@ -36,13 +37,19 @@ async function MFBridgeSSRFetcher<P extends object>({
       })
     }
 
-    // Approach 2 — import the component on the host server and render inline
+    // Approach 2 — import the component on the host server and render inline.
+    // The timer is always cleared (win or lose) to avoid an orphaned setTimeout.
+    let timerId: ReturnType<typeof setTimeout> | undefined
     const Component = await Promise.race([
       loader!(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('MFBridgeSSR: loader timeout')), timeout),
-      ),
-    ])
+      new Promise<never>((_, reject) => {
+        timerId = setTimeout(
+          () => reject(new Error('MFBridgeSSR: loader timeout')),
+          timeout,
+        )
+      }),
+    ]).finally(() => clearTimeout(timerId))
+
     return createElement(Component, props)
   } catch {
     return fallback

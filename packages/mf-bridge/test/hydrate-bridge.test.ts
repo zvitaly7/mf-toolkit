@@ -110,9 +110,32 @@ describe('hydrateWithBridge', () => {
     host.remove()
   })
 
-  it('is a no-op when [data-mf-namespace] element does not exist', () => {
+  it('teardown removes listeners — propsChanged no longer causes re-render', async () => {
+    const host = buildSSRFragment('teardown-ns', { orderId: '1' })
+    const rendered: string[] = []
+
+    function Widget({ orderId }: { orderId: string }) {
+      rendered.push(orderId)
+      return createElement('span', null, orderId)
+    }
+
+    let teardown!: () => void
+    await act(async () => { teardown = hydrateWithBridge(Widget, { namespace: 'teardown-ns' }) })
+    rendered.length = 0
+
+    teardown()
+
+    const bus = new DOMEventBus(host, 'teardown-ns')
+    bus.send('propsChanged', { orderId: '99' })
+
+    expect(rendered).toHaveLength(0)
+    host.remove()
+  })
+
+  it('returns a no-op teardown when [data-mf-namespace] element does not exist', () => {
     function Widget() { return null }
-    expect(() => hydrateWithBridge(Widget, { namespace: 'nonexistent' })).not.toThrow()
+    const teardown = hydrateWithBridge(Widget, { namespace: 'nonexistent' })
+    expect(() => teardown()).not.toThrow()
   })
 })
 
