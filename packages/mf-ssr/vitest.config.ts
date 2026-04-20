@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     environmentMatchGlobs: [
       ['**/hydrate.test.ts', 'jsdom'],
+      ['**/host.test.ts', 'jsdom'],
     ],
   },
   resolve: {
