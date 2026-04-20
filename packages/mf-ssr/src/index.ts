@@ -1,2 +1,2 @@
-export { MFBridgeSSR, clearFragmentCache } from './host.js'
-export type { MFBridgeSSRProps, MFFragmentHandler, HydrateRemoteOpts } from './types.js'
+export { MFBridgeSSR, clearFragmentCache, preloadFragment } from './host.js'
+export type { MFBridgeSSRProps, MFFragmentHandler, HydrateRemoteOpts, TypedSSROnEvent } from './types.js'
