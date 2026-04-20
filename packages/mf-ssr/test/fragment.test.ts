@@ -102,3 +102,35 @@ describe('createMFReactFragment', () => {
     expect(scriptBlock).toContain('\\u2029')
   })
 })
+
+describe('createMFReactFragment — cache headers', () => {
+  it('defaults to Cache-Control: no-store', async () => {
+    function Widget() { return null }
+    const handler = createMFReactFragment(Widget)
+    const res = await handler(makeRequest())
+    expect(res.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('honours custom cacheControl option', async () => {
+    function Widget() { return null }
+    const handler = createMFReactFragment(Widget, {
+      cacheControl: 'public, s-maxage=60, stale-while-revalidate=30',
+    })
+    const res = await handler(makeRequest())
+    expect(res.headers.get('cache-control')).toBe('public, s-maxage=60, stale-while-revalidate=30')
+  })
+
+  it('adds Vary header when vary option is set', async () => {
+    function Widget() { return null }
+    const handler = createMFReactFragment(Widget, { vary: 'Accept-Language' })
+    const res = await handler(makeRequest())
+    expect(res.headers.get('vary')).toBe('Accept-Language')
+  })
+
+  it('omits Vary header by default', async () => {
+    function Widget() { return null }
+    const handler = createMFReactFragment(Widget)
+    const res = await handler(makeRequest())
+    expect(res.headers.get('vary')).toBeNull()
+  })
+})
