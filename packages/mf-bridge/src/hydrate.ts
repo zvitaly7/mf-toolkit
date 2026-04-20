@@ -25,17 +25,22 @@ export interface HydrateWithBridgeOpts {
  *    events dispatched by `MFBridgeHydrated` — calls `root.render()` on each.
  * 5. Listens for `command` events and forwards them to `onCommand` if provided.
  *
- * Safe to call in SSR environments — returns immediately when `document` is undefined.
+ * Returns a teardown function — call it if the fragment is removed from the DOM
+ * to clean up all event listeners and unmount the React root.
+ *
+ * Safe to call in SSR environments — returns a no-op teardown when `document` is undefined.
  */
 export function hydrateWithBridge<P extends object>(
   Component: ComponentType<P>,
   opts: HydrateWithBridgeOpts,
-): void {
-  if (typeof document === 'undefined') return
+): () => void {
+  if (typeof document === 'undefined') return () => {}
 
   const { namespace, selector, onCommand } = opts
   const containerSelector = selector ?? `[data-mf-namespace="${namespace}"]`
   const containers = document.querySelectorAll(containerSelector)
+
+  const teardowns: Array<() => void> = []
 
   for (const container of containers) {
     const appEl = container.querySelector('[data-mf-app]') as HTMLElement | null
@@ -50,14 +55,22 @@ export function hydrateWithBridge<P extends object>(
     const root = hydrateRoot(appEl, createElement(Component, props))
     const bus = new DOMEventBus(container as HTMLElement, namespace)
 
-    bus.on<P>('propsChanged', (newProps) => {
+    const unsubProps = bus.on<P>('propsChanged', (newProps) => {
       root.render(createElement(Component, newProps))
     })
 
-    if (onCommand) {
-      bus.on<{ type: string; payload: unknown }>('command', ({ type, payload }) => {
-        onCommand(type, payload)
-      })
-    }
+    const unsubCommand = onCommand
+      ? bus.on<{ type: string; payload: unknown }>('command', ({ type, payload }) => {
+          onCommand(type, payload)
+        })
+      : undefined
+
+    teardowns.push(() => {
+      unsubProps()
+      unsubCommand?.()
+      root.unmount()
+    })
   }
+
+  return () => teardowns.forEach((fn) => fn())
 }
