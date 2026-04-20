@@ -14,6 +14,7 @@ import {
 } from 'react'
 import { DOMEventBus } from '@mf-toolkit/mf-bridge'
 import type { MFBridgeSSRProps } from './types.js'
+import { safeJsonStringify } from './utils.js'
 
 // ─── Error boundary ──────────────────────────────────────────────────────────
 
@@ -64,9 +65,25 @@ interface UrlModeProps<P extends object> {
   commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
 }
 
+// Guard against payloads that exceed typical CDN / reverse-proxy URL limits.
+// Most edge runtimes cap URLs at 8 KB; 4 KB is a conservative safe limit.
+const MAX_PROPS_URL_BYTES = 4096
+
 function fetchFragmentHtml<P>(url: string, props: P, timeout: number): TaggedPromise<string> {
   const encoded = encodeURIComponent(JSON.stringify(props))
-  return fetch(`${url}?props=${encoded}`, {
+  const fullUrl = `${url}?props=${encoded}`
+  if (fullUrl.length > MAX_PROPS_URL_BYTES) {
+    const err = new Error(
+      `MFBridgeSSR: props payload too large (${fullUrl.length} chars > ${MAX_PROPS_URL_BYTES} limit). ` +
+      'Reduce props size or split into smaller fragments.',
+    )
+    const rejected = Promise.reject(err) as TaggedPromise<string>
+    rejected._status = 'rejected'
+    rejected._reason = err
+    rejected.catch(() => {}) // suppress UnhandledPromiseRejection
+    return rejected
+  }
+  return fetch(fullUrl, {
     signal: AbortSignal.timeout(timeout),
   }).then(async (res) => {
     if (!res.ok) throw new Error(`MFBridgeSSR: ${url} → ${res.status}`)
@@ -76,8 +93,16 @@ function fetchFragmentHtml<P>(url: string, props: P, timeout: number): TaggedPro
 
 // Cache keyed by URL + serialized initial props + timeout so the fetch promise
 // survives Suspense retries (fiber state is discarded before first commit).
-// Entries persist across renders within the same module instance — bounded by
-// the set of unique (url, initial-props) combinations the app uses.
+//
+// Why rejected entries must stay: when a promise rejects, Suspense schedules a
+// re-render. On that re-render, readPromise checks _status === 'rejected' and
+// throws the Error (not the promise), which ErrorBoundary catches. If we evict
+// the rejected entry before the re-render, readPromise gets a brand-new pending
+// promise → Suspense suspends again → infinite retry, ErrorBoundary never fires.
+//
+// For server longevity: size is capped at FRAGMENT_CACHE_MAX. To clear stale
+// rejected entries (e.g. after a remote recovers), call clearFragmentCache().
+const FRAGMENT_CACHE_MAX = 50
 const fragmentCache = new Map<string, TaggedPromise<string>>()
 
 /** @internal Test-only: reset the url-mode fetch cache between test cases. */
@@ -85,13 +110,35 @@ export function __clearFragmentCache(): void {
   fragmentCache.clear()
 }
 
+/**
+ * Evict one or all entries from the fragment cache.
+ *
+ * Use after a remote recovers from an error so the next render gets a fresh
+ * fetch instead of the cached rejected promise. Pass a URL + props key to
+ * evict a specific entry, or call with no arguments to flush the whole cache.
+ */
+export function clearFragmentCache(): void {
+  fragmentCache.clear()
+}
+
 function getFragmentHtml<P>(
   url: string, initialProps: P, timeout: number,
 ): TaggedPromise<string> {
-  const key = `${url}?${JSON.stringify(initialProps)}#${timeout}`
+  const key = `${url}?${safeJsonStringify(initialProps)}#${timeout}`
   const cached = fragmentCache.get(key)
   if (cached) return cached
+
+  if (fragmentCache.size >= FRAGMENT_CACHE_MAX) {
+    // Evict the oldest entry (Map preserves insertion order).
+    fragmentCache.delete(fragmentCache.keys().next().value as string)
+  }
+
   const promise = fetchFragmentHtml(url, initialProps, timeout)
+
+  // Pre-rejected promises (e.g. URL-too-large) already have _status set
+  // synchronously — don't cache them so the app can fix props and retry.
+  if (promise._status === 'rejected') return promise
+
   fragmentCache.set(key, promise)
   return promise
 }
