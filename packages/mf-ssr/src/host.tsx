@@ -68,17 +68,60 @@ interface UrlModeProps<P extends object> {
   timeout: number
   fetchOptions?: Omit<RequestInit, 'signal'>
   cacheKey?: string
+  retryCount?: number
+  retryDelay?: number
+  debug?: boolean
   onEvent?: (type: string, payload: unknown) => void
   commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
+}
+
+interface LoaderModeProps<P extends object> {
+  loader: () => Promise<ComponentType<P>>
+  props: P
+  timeout: number
+  debug?: boolean
 }
 
 // Guard against payloads that exceed typical CDN / reverse-proxy URL limits.
 // Most edge runtimes cap URLs at 8 KB; 4 KB is a conservative safe limit.
 const MAX_PROPS_URL_BYTES = 4096
 
+function mfLog(debug: boolean | undefined, ...args: unknown[]): void {
+  if (debug) console.log('[mf-ssr]', ...args)
+}
+
+interface FetchOpts {
+  fetchOptions?: Omit<RequestInit, 'signal'>
+  retryCount?: number
+  retryDelay?: number
+  debug?: boolean
+}
+
+async function fetchWithRetry(
+  url: string, fullUrl: string, timeout: number, opts: FetchOpts,
+): Promise<string> {
+  const { fetchOptions, retryCount = 0, retryDelay = 1000, debug } = opts
+  let lastErr!: Error
+  for (let attempt = 0; attempt <= retryCount; attempt++) {
+    if (attempt > 0) {
+      mfLog(debug, `retrying ${url} (attempt ${attempt}/${retryCount})`)
+      await new Promise<void>((r) => setTimeout(r, retryDelay))
+    }
+    try {
+      const res = await fetch(fullUrl, { ...fetchOptions, signal: AbortSignal.timeout(timeout) })
+      if (!res.ok) throw new Error(`MFBridgeSSR: ${url} → ${res.status}`)
+      mfLog(debug, 'fragment fetched', { url, attempt })
+      return await res.text()
+    } catch (err) {
+      lastErr = err as Error
+      mfLog(debug, 'fetch attempt failed', { url, attempt, err })
+    }
+  }
+  throw lastErr
+}
+
 function fetchFragmentHtml<P>(
-  url: string, props: P, timeout: number,
-  fetchOptions?: Omit<RequestInit, 'signal'>,
+  url: string, props: P, timeout: number, opts: FetchOpts = {},
 ): TaggedPromise<string> {
   const encoded = encodeURIComponent(JSON.stringify(props))
   const fullUrl = `${url}?props=${encoded}`
@@ -90,16 +133,11 @@ function fetchFragmentHtml<P>(
     const rejected = Promise.reject(err) as TaggedPromise<string>
     rejected._status = 'rejected'
     rejected._reason = err
-    rejected.catch(() => {}) // suppress UnhandledPromiseRejection
+    rejected.catch(() => {})
     return rejected
   }
-  return fetch(fullUrl, {
-    ...fetchOptions,
-    signal: AbortSignal.timeout(timeout),
-  }).then(async (res) => {
-    if (!res.ok) throw new Error(`MFBridgeSSR: ${url} → ${res.status}`)
-    return res.text()
-  }) as TaggedPromise<string>
+  mfLog(opts.debug, 'fetching fragment', { url, retryCount: opts.retryCount ?? 0 })
+  return fetchWithRetry(url, fullUrl, timeout, opts) as TaggedPromise<string>
 }
 
 // Cache keyed by URL + serialized initial props + timeout so the fetch promise
@@ -132,21 +170,23 @@ export function clearFragmentCache(): void {
   fragmentCache.clear()
 }
 
+interface GetFragmentOpts extends FetchOpts {
+  cacheKey?: string
+}
+
 function getFragmentHtml<P>(
-  url: string, initialProps: P, timeout: number,
-  fetchOptions?: Omit<RequestInit, 'signal'>,
-  cacheKey?: string,
+  url: string, initialProps: P, timeout: number, opts: GetFragmentOpts = {},
 ): TaggedPromise<string> {
+  const { cacheKey, ...fetchOpts } = opts
   const key = `${url}?${safeJsonStringify(initialProps)}#${timeout}#${cacheKey ?? ''}`
   const cached = fragmentCache.get(key)
   if (cached) return cached
 
   if (fragmentCache.size >= FRAGMENT_CACHE_MAX) {
-    // Evict the oldest entry (Map preserves insertion order).
     fragmentCache.delete(fragmentCache.keys().next().value as string)
   }
 
-  const promise = fetchFragmentHtml(url, initialProps, timeout, fetchOptions)
+  const promise = fetchFragmentHtml(url, initialProps, timeout, fetchOpts)
 
   // Pre-rejected promises (e.g. URL-too-large) already have _status set
   // synchronously — don't cache them so the app can fix props and retry.
@@ -156,8 +196,31 @@ function getFragmentHtml<P>(
   return promise
 }
 
+/**
+ * Pre-warm the fragment cache before `MFBridgeSSR` renders.
+ *
+ * Call this in a route loader, `getServerSideProps`, or a parent `useEffect`
+ * so the fetch is already in-flight (or resolved) by the time the component
+ * renders. When the cache is warm, Suspense skips the fallback entirely —
+ * the fragment appears on the first paint with no loading state.
+ *
+ * ```ts
+ * // Next.js App Router — prefetch in the Server Component before streaming
+ * preloadFragment('https://checkout.acme.com/fragment', { orderId })
+ * ```
+ */
+export function preloadFragment<P extends object>(
+  url: string,
+  props: P,
+  opts?: { timeout?: number } & GetFragmentOpts,
+): void {
+  const { timeout = 3000, ...rest } = opts ?? {}
+  getFragmentHtml(url, props, timeout, rest)
+}
+
 function UrlMode<P extends object>({
-  url, props, namespace, timeout, fetchOptions, cacheKey, onEvent, commandRef,
+  url, props, namespace, timeout, fetchOptions, cacheKey,
+  retryCount, retryDelay, debug, onEvent, commandRef,
 }: UrlModeProps<P>): ReactElement {
   // Use the props from the very first render as the "initial" fetch key. Once
   // the fiber commits, useRef preserves it across updates. Before commit,
@@ -171,8 +234,16 @@ function UrlMode<P extends object>({
   const commandRefRef = useRef(commandRef); commandRefRef.current = commandRef
 
   const html = readPromise(
-    getFragmentHtml(url, initialPropsRef.current, timeout, fetchOptions, cacheKey),
+    getFragmentHtml(url, initialPropsRef.current, timeout, {
+      fetchOptions, cacheKey, retryCount, retryDelay, debug,
+    }),
   )
+
+  useEffect(() => {
+    mfLog(debug, 'url-mode mounted', { url, namespace })
+    return () => { mfLog(debug, 'url-mode unmounted', { url, namespace }) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!namespace) return
@@ -186,6 +257,7 @@ function UrlMode<P extends object>({
         bus.send('command', { type, payload })
     }
     const unsub = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
+      mfLog(debug, 'event received', { type, payload })
       onEventRef.current?.(type, payload)
     })
     return () => {
@@ -193,12 +265,13 @@ function UrlMode<P extends object>({
       busRef.current = null
       if (commandRefRef.current) commandRefRef.current.current = null
     }
-  }, [namespace])
+  }, [namespace])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (isFirstPropsEffect.current) { isFirstPropsEffect.current = false; return }
+    mfLog(debug, 'propsChanged', props)
     busRef.current?.send('propsChanged', props)
-  }, [props])
+  }, [props])  // eslint-disable-line react-hooks/exhaustive-deps
 
   return createElement('div', {
     ref: wrapperRef,
@@ -213,12 +286,6 @@ function UrlMode<P extends object>({
 // Federation runtime, dynamic import). Wraps it in React.lazy so SSR streams
 // the fallback until the import resolves. Props flow naturally — when the
 // parent re-renders, the remote re-renders with new props, no bridge needed.
-
-interface LoaderModeProps<P extends object> {
-  loader: () => Promise<ComponentType<P>>
-  props: P
-  timeout: number
-}
 
 // Cache keyed by loader reference so the `lazy()` result survives Suspense
 // retries. Before first commit, React discards fiber state (including hooks),
@@ -255,8 +322,13 @@ function getLazy<P extends object>(
   return created
 }
 
-function LoaderMode<P extends object>({ loader, props, timeout }: LoaderModeProps<P>): ReactElement {
+function LoaderMode<P extends object>({ loader, props, timeout, debug }: LoaderModeProps<P>): ReactElement {
   const LazyComp = getLazy(loader, timeout)
+  useEffect(() => {
+    mfLog(debug, 'loader-mode mounted')
+    return () => { mfLog(debug, 'loader-mode unmounted') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return createElement(LazyComp as unknown as ComponentType<object>, props as object)
 }
 
@@ -298,10 +370,10 @@ function LoaderMode<P extends object>({ loader, props, timeout }: LoaderModeProp
  * />
  */
 export function MFBridgeSSR<P extends object>(props: MFBridgeSSRProps<P>): ReactElement {
-  const { fallback = null, errorFallback = null, timeout = 3000, onError } = props
+  const { fallback = null, errorFallback = null, timeout = 3000, onError, debug } = props
 
   const inner = props.loader
-    ? createElement(LoaderMode<P>, { loader: props.loader, props: props.props, timeout })
+    ? createElement(LoaderMode<P>, { loader: props.loader, props: props.props, timeout, debug })
     : createElement(UrlMode<P>, {
         url: props.url,
         props: props.props,
@@ -309,6 +381,9 @@ export function MFBridgeSSR<P extends object>(props: MFBridgeSSRProps<P>): React
         timeout,
         fetchOptions: props.fetchOptions,
         cacheKey: props.cacheKey,
+        retryCount: props.retryCount,
+        retryDelay: props.retryDelay,
+        debug,
         onEvent: props.onEvent,
         commandRef: props.commandRef,
       })
