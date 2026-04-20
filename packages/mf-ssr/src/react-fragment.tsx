@@ -5,6 +5,19 @@ import { safeJsonStringify } from './utils.js'
 
 export interface CreateMFReactFragmentOpts {
   id?: string
+  /**
+   * Value for the `Cache-Control` response header.
+   * Default: `'no-store'` — safe for authenticated / personalised fragments.
+   * Set to e.g. `'public, s-maxage=60, stale-while-revalidate=30'` for
+   * public, cacheable fragments served from a CDN.
+   */
+  cacheControl?: string
+  /**
+   * Value for the `Vary` response header.
+   * Omitted by default. Typical value when caching public fragments:
+   * `'Accept-Language'` or `'Accept-Encoding'`.
+   */
+  vary?: string
 }
 
 export function createMFReactFragment<P extends object>(
@@ -12,6 +25,7 @@ export function createMFReactFragment<P extends object>(
   opts?: CreateMFReactFragmentOpts,
 ): MFFragmentHandler {
   const fragmentId = opts?.id ?? Component.displayName ?? Component.name ?? 'mf'
+  const cacheControl = opts?.cacheControl ?? 'no-store'
 
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url)
@@ -39,8 +53,11 @@ export function createMFReactFragment<P extends object>(
     }
 
     const stream = await renderToReadableStream(createElement(FragmentShell))
-    return new Response(stream, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    })
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': cacheControl,
+    }
+    if (opts?.vary) headers['Vary'] = opts.vary
+    return new Response(stream, { headers })
   }
 }

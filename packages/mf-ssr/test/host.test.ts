@@ -341,4 +341,78 @@ describe('MFBridgeSSR — url mode', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('forwards fetchOptions headers to the fragment fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, text: () => Promise.resolve(FRAG_HTML),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { findByText } = render(
+      createElement(MFBridgeSSR, {
+        url: 'http://frag/',
+        props: { n: 1 },
+        namespace: 'fwd',
+        fetchOptions: { headers: { authorization: 'Bearer tok', 'x-request-id': 'abc' } },
+      }),
+    )
+    await findByText('content')
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = init.headers as Record<string, string>
+    expect(headers['authorization']).toBe('Bearer tok')
+    expect(headers['x-request-id']).toBe('abc')
+  })
+
+  it('calls onError with the thrown error when fetch fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('boom')))
+
+    const onError = vi.fn()
+    const { findByTestId } = render(
+      createElement(MFBridgeSSR, {
+        url: 'http://frag/',
+        props: {},
+        onError,
+        errorFallback: createElement('span', { 'data-testid': 'err' }, 'failed'),
+      }),
+    )
+    await findByTestId('err')
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error)
+  })
+
+  it('calls onError in loader mode when loader rejects', async () => {
+    const onError = vi.fn()
+    const { findByTestId } = render(
+      createElement(MFBridgeSSR, {
+        loader: () => Promise.reject(new Error('load-fail')),
+        props: {},
+        onError,
+        errorFallback: createElement('span', { 'data-testid': 'err' }, 'failed'),
+      }),
+    )
+    await findByTestId('err')
+    expect(onError).toHaveBeenCalledOnce()
+  })
+
+  it('uses separate cache slots for different cacheKey values', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, text: () => Promise.resolve(FRAG_HTML),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { findByText: find1 } = render(
+      createElement(MFBridgeSSR, { url: 'http://frag/', props: { n: 1 }, namespace: 'a', cacheKey: 'user-1' }),
+    )
+    await find1('content')
+    cleanup()
+
+    __clearFragmentCache()
+    const { findByText: find2 } = render(
+      createElement(MFBridgeSSR, { url: 'http://frag/', props: { n: 1 }, namespace: 'b', cacheKey: 'user-2' }),
+    )
+    await find2('content')
+
+    // Two different cacheKeys → two separate fetches
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })
