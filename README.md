@@ -142,6 +142,26 @@ import { MFBridgeLazy } from '@mf-toolkit/mf-bridge'
 
 ---
 
+### 🌐 MF SSR — [@mf-toolkit/mf-ssr](./packages/mf-ssr) · 🚧 Work in progress
+
+[![status](https://img.shields.io/badge/status-WIP-orange)](./packages/mf-ssr)
+[![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
+
+**Out-of-box SSR for microfrontends in a polyrepo.** Renders the remote MF inside the host's SSR response, hydrates on the client, and lets host state drive remote re-renders automatically — no extra wiring, no async-RSC gymnastics.
+
+One component (`<MFBridgeSSR>`), two modes:
+
+- **`loader` mode** — remote on S3/CDN / Module Federation; host imports the component and renders it inline. Prop updates flow as a normal React re-render.
+- **`url` mode** — remote exposes an HTTP fragment endpoint; host fetches HTML during SSR and inlines it. After hydration, host prop changes stream to the remote via `DOMEventBus`. Works with any remote stack (React, Vue, Svelte, vanilla).
+
+Zero production deps (aside from the tiny `@mf-toolkit/mf-bridge`). Works on Cloudflare Workers, Vercel Edge, Bun, and Node 18+.
+
+> ⚠️ **Status:** API stabilizing, not yet published to npm. Feedback welcome — [open an issue](https://github.com/zvitaly7/mf-toolkit/issues) or try it via a git dependency.
+
+[![📖 Design doc, API & integration guide →](https://img.shields.io/badge/📖_Design_doc,_API_&_integration_guide_→-blue?style=for-the-badge)](./packages/mf-ssr)
+
+---
+
 ## Philosophy
 
 - 📦 **Use what you need.** Every package is published independently to npm. No forced coupling.

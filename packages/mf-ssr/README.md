@@ -300,3 +300,34 @@ Returns a teardown function. Safe to call in SSR environments — returns a no-o
 | `@mf-toolkit/mf-bridge/hydrate` | Remote client bundle | `hydrateWithBridge` (streaming — recommended) |
 
 `MFBridgeSSR` is a client-boundary component: it renders server-side during SSR (including `renderToReadableStream`), hydrates on the client, and re-renders with the parent's state. No manual host-side wiring needed beyond embedding it in your tree.
+
+---
+
+## Benchmarks
+
+The `bench/` folder contains Vitest benchmarks for the SSR hot paths:
+
+- **`dom-event-bus.bench.ts`** — `DOMEventBus.send` throughput with 0/1/10/100 listeners (baseline for url-mode prop streaming)
+- **`ssr-loader.bench.ts`** — `renderToReadableStream` with 1/5/20 `<MFBridgeSSR>` loader-mode fragments (edge TTFB path)
+- **`prop-streaming.bench.ts`** — end-to-end url-mode `setState` → `propsChanged` dispatch (steady-state after hydration)
+
+Run locally:
+
+```bash
+npm run bench
+```
+
+Indicative numbers on a modest dev machine (Node 20, jsdom):
+
+| Hot path | ops/sec |
+|---|---|
+| `DOMEventBus.send` — 1 listener | ~128k |
+| `DOMEventBus.send` — 10 listeners | ~50k |
+| `DOMEventBus.send` — 100 listeners | ~7k |
+| SSR loader-mode — 1 fragment | ~24k |
+| SSR loader-mode — 5 fragments | ~7.5k |
+| SSR loader-mode — 20 fragments | ~2k |
+| url-mode end-to-end (1 listener) | ~250k |
+| url-mode end-to-end (10 listeners) | ~237k |
+
+Absolute numbers are machine-dependent; use them to spot regressions, not as SLOs.
