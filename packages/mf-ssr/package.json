@@ -30,6 +30,7 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
+    "bench": "vitest bench --run",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm test"
   },
