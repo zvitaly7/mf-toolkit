@@ -2,6 +2,21 @@ import type { ComponentType, ReactNode } from 'react'
 
 export type MFFragmentHandler = (req: Request) => Promise<Response>
 
+/**
+ * Utility type for type-safe `onEvent` handlers on the host side.
+ *
+ * @example
+ * type CheckoutEvents = { orderPlaced: { orderId: string }; cancelled: void }
+ *
+ * const handler: TypedSSROnEvent<CheckoutEvents> = (type, payload) => {
+ *   if (type === 'orderPlaced') console.log(payload.orderId) // payload typed
+ * }
+ * <MFBridgeSSR onEvent={handler} ... />
+ */
+export type TypedSSROnEvent<Events extends Record<string, unknown>> = <
+  K extends keyof Events & string,
+>(type: K, payload: Events[K]) => void
+
 interface MFBridgeSSRBaseProps<P extends object> {
   /** Props passed to the remote component. Type-safe per mode. */
   props: P
@@ -17,6 +32,12 @@ interface MFBridgeSSRBaseProps<P extends object> {
    * the visual fallback — `errorFallback` still controls what the user sees.
    */
   onError?: (error: Error) => void
+  /**
+   * Emit debug logs to the console.
+   * Logs fetch lifecycle, prop streaming, and bus events — useful during
+   * integration. Keep off in production.
+   */
+  debug?: boolean
 }
 
 /** Approach 1: remote exposes an HTTP fragment endpoint. */
@@ -58,6 +79,17 @@ interface MFBridgeSSRUrlProps<P extends object> extends MFBridgeSSRBaseProps<P> 
    * ```
    */
   cacheKey?: string
+  /**
+   * Number of additional fetch attempts after the first failure.
+   * Default: 0 (no retry). Each attempt uses a fresh `AbortSignal.timeout`.
+   * The Suspense fallback is shown for the full duration of all attempts.
+   */
+  retryCount?: number
+  /**
+   * Milliseconds to wait between retry attempts. Default: 1000.
+   * Has no effect when `retryCount` is 0.
+   */
+  retryDelay?: number
 }
 
 /** Approach 2: host imports the component directly (S3/CDN remote, no extra server). */
@@ -69,6 +101,8 @@ interface MFBridgeSSRLoaderProps<P extends object> extends MFBridgeSSRBaseProps<
   commandRef?: never
   fetchOptions?: never
   cacheKey?: never
+  retryCount?: never
+  retryDelay?: never
 }
 
 export type MFBridgeSSRProps<P extends object = object> =
