@@ -4,20 +4,20 @@
 [![license](https://img.shields.io/npm/l/@mf-toolkit/mf-ssr?color=blue)](https://github.com/zvitaly7/mf-toolkit/blob/main/LICENSE)
 [![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
 
-**Server-side rendered microfrontend fragments for polyrepo Module Federation.** The host fetches all MF fragments during SSR and composes them into a single streaming response — without a shared build or orchestration layer.
+**Out-of-box SSR for microfrontends in a polyrepo.** Render the remote MF inside the host's SSR response, hydrate it on the client, and let host state drive remote re-renders automatically — no extra wiring, no async-RSC gymnastics, no manual bridge on the host side.
 
-Two modes, one component:
+Two modes, one component (`<MFBridgeSSR>`):
 
-- **`url` mode** — remote exposes an HTTP fragment endpoint; host fetches its HTML during SSR. Works with any remote stack (React, Vue, Svelte, vanilla).
-- **`loader` mode** — remote lives on S3/CDN as usual; host imports the component directly and renders it inline. No extra server needed on the remote side.
+- **`loader` mode** — remote lives on S3/CDN / Module Federation as usual; host imports the component directly and renders it inline. No extra server needed on the remote side. Prop updates flow as a normal React re-render.
+- **`url` mode** — remote exposes an HTTP fragment endpoint; host fetches its HTML during SSR and inlines it. After hydration, host prop changes are streamed to the remote via a `DOMEventBus`. Works with any remote stack (React, Vue, Svelte, vanilla).
 
-Zero production dependencies. Works on Cloudflare Workers, Vercel Edge, Bun, and Node 18+.
+Zero production dependencies (aside from the tiny internal bridge from `@mf-toolkit/mf-bridge`). Works on Cloudflare Workers, Vercel Edge, Bun, and Node 18+.
 
 ---
 
 ## The problem
 
-`@mf-toolkit/mf-bridge` mounts microfrontend components on the **client** — after JS loads, after the remote bundle downloads, after React hydrates. For a host page rendered with SSR, the MF slot stays empty until all that happens:
+`@mf-toolkit/mf-bridge` alone mounts microfrontend components on the **client** — after JS loads, after the remote bundle downloads, after React hydrates. For a host page rendered with SSR, the MF slot stays empty until all that happens:
 
 ```
 Browser receives host HTML   Browser downloads JS   MF bundle loads    MF renders
@@ -30,17 +30,21 @@ Browser receives host HTML   Browser downloads JS   MF bundle loads    MF render
 
 The consequence: layout shift, blank content in crawlers, degraded Core Web Vitals.
 
+`mf-ssr` fixes it while keeping the part host developers care about most: **host state still drives the remote.** When the host re-renders with new props (e.g. the current user changes, a step advances, a filter updates), the remote re-renders too — automatically.
+
 ---
 
 ## Choosing a mode
 
-| | `url` mode | `loader` mode |
+| | `loader` mode | `url` mode |
 |---|---|---|
-| Remote infrastructure | Needs HTTP endpoint | S3/CDN only, no server |
-| Remote framework | Any (React, Vue, Svelte…) | React only |
-| Client hydration | `hydrateRemote()` in remote bundle | Automatic (host React tree) |
-| Isolation | Full (separate render) | Inline in host tree |
-| Best for | Independent remote teams, non-React remotes | Simple setups, all-React monorepo with S3 remotes |
+| Remote infrastructure | S3/CDN only, no server | Needs HTTP fragment endpoint |
+| Remote framework | React only | Any (React, Vue, Svelte…) |
+| Host-side integration | `<MFBridgeSSR loader={…} />` | `<MFBridgeSSR url={…} namespace={…} />` |
+| Remote client hydration | Automatic (host React tree) | `hydrateWithBridge()` in remote bundle |
+| Isolation | Inline in host tree | Full (separate React root) |
+| Prop streaming on host re-render | Native React re-render | DOM CustomEvents (`DOMEventBus`) |
+| Best for | React-only stack with S3 remotes | Polyrepo teams, non-React remotes |
 
 Both modes use the same `<MFBridgeSSR>` component — just swap `url` for `loader`.
 
@@ -49,11 +53,11 @@ Both modes use the same `<MFBridgeSSR>` component — just swap `url` for `loade
 ## Installation
 
 ```bash
-# in the host app
+# host app
 npm install @mf-toolkit/mf-ssr
 
-# in the remote app (fragment endpoint + client hydration — url mode only)
-npm install @mf-toolkit/mf-ssr
+# remote app (url mode — for the fragment endpoint and client hydration)
+npm install @mf-toolkit/mf-ssr @mf-toolkit/mf-bridge
 ```
 
 Peer dependencies:
@@ -63,22 +67,54 @@ npm install react@^18 react-dom@^18
 
 ---
 
-## Mode 1 — `url`: remote has an HTTP endpoint
+## Mode 1 — `loader`: remote on S3/CDN, host renders inline
 
-Use this when each remote team owns their own deployment. The remote renders its component to HTML and streams it over HTTP. The host fetches the HTML during SSR and injects it into the page.
+No extra server on the remote side. The host imports the component at SSR time and renders it directly inside its own React tree. Host state changes just re-render the remote like any other React component.
+
+```tsx
+// host-app/app/page.tsx
+'use client' // if the page lives inside a client boundary
+import { useState } from 'react'
+import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
+
+const loadCabinet = () => import('cabinet/App').then(m => m.CabinetWidget)
+
+export function Cabinet({ userId }: { userId: string }) {
+  const [currentUser, setCurrentUser] = useState({ id: userId })
+  return (
+    <MFBridgeSSR
+      loader={loadCabinet}
+      props={{ currentUser }}
+      fallback={<CabinetSkeleton />}
+      errorFallback={<CabinetError />}
+    />
+  )
+}
+```
+
+When `currentUser` changes, the remote `<CabinetWidget currentUser={…} />` re-renders automatically.
+
+**Requirements:**
+- The remote's exposed module must be importable on the server (no `window`/`document` at module top-level).
+- Keep the `loader` reference stable — define it at module scope or wrap in `useCallback`. (The component caches the resolved `React.lazy` by loader reference so Suspense retries reuse the same promise.)
+
+---
+
+## Mode 2 — `url`: remote has an HTTP endpoint
+
+Use this when each remote team owns their own deployment, or when the remote is not React. The remote renders itself to HTML on request; the host fetches the HTML during SSR and hydrates it on the client. Prop updates are streamed via a `DOMEventBus` — no re-fetch.
 
 ### Step 1 — Remote: expose a fragment endpoint
 
-```tsx
-// checkout-remote/src/fragment.ts
+```ts
+// checkout-remote/fragment.ts
 import { createMFReactFragment } from '@mf-toolkit/mf-ssr/fragment'
 import { CheckoutWidget } from './CheckoutWidget'
 
 export const handler = createMFReactFragment(CheckoutWidget)
-// handler: (req: Request) => Promise<Response>
 ```
 
-Wire it to your server. Any HTTP framework works:
+Wire it to any HTTP framework:
 
 ```ts
 // Hono (Node / Bun / Cloudflare Worker)
@@ -91,157 +127,132 @@ export const GET = handler
 export default { fetch: handler }
 ```
 
-### Step 2 — Host: `<MFBridgeSSR url="..." />`
+### Step 2 — Host: `<MFBridgeSSR url="…" namespace="…" />`
 
 ```tsx
-// host-app/src/app/page.tsx (Next.js App Router)
-import { Suspense } from 'react'
+// host-app/CheckoutSlot.tsx
+'use client'
+import { useState } from 'react'
 import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
 
-export default function Page({ searchParams }) {
+export function CheckoutSlot({ orderId }: { orderId: string }) {
+  const [step, setStep] = useState('summary')
   return (
-    <Suspense fallback={<CheckoutSkeleton />}>
-      <MFBridgeSSR
-        url="https://checkout.acme.com/fragment"
-        props={{ orderId: searchParams.orderId }}
-      />
-    </Suspense>
+    <MFBridgeSSR
+      url="https://checkout.acme.com/fragment"
+      namespace="checkout"
+      props={{ orderId, step }}
+      fallback={<CheckoutSkeleton />}
+      onEvent={(type) => { if (type === 'completed') setStep('confirmation') }}
+    />
   )
 }
 ```
 
-### Step 3 — Remote: hydrate on the client
+### Step 3 — Remote: hydrate on the client with the bridge
 
 ```ts
-// checkout-remote/src/client-entry.ts
-import { hydrateRemote } from '@mf-toolkit/mf-ssr/hydrate'
+// checkout-remote/client-entry.ts
+import { hydrateWithBridge } from '@mf-toolkit/mf-bridge/hydrate'
 import { CheckoutWidget } from './CheckoutWidget'
 
-hydrateRemote(CheckoutWidget)
+hydrateWithBridge(CheckoutWidget, { namespace: 'checkout' })
 ```
 
-Load this script in the host page (via Module Federation, `<script>` tag, or script injection in Next.js config). `hydrateRemote` reads the serialized props from the `<script data-mf-props>` tag embedded by the fragment endpoint and calls `React.hydrateRoot` — no extra network round-trip.
+That's it. Props the host passes into `<MFBridgeSSR>` are:
+- Used for the initial SSR fetch → the remote renders HTML with those props.
+- Serialized into a `<script data-mf-props>` tag so `hydrateWithBridge` can hydrate with matching props (no mismatch, no re-fetch).
+- On every host re-render, dispatched as a `propsChanged` CustomEvent → `hydrateWithBridge` re-renders the remote root with the new props.
 
----
-
-## Mode 2 — `loader`: remote on S3/CDN, host renders inline
-
-Use this when the remote is a standard MF bundle on S3/CDN with no dedicated server. The host imports the component at SSR time and renders it directly inside its own React tree.
-
-No changes to the remote app. No extra server. Just point the host at the component:
-
-```tsx
-// host-app/src/app/page.tsx (Next.js App Router)
-import { Suspense } from 'react'
-import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
-
-export default function Page({ searchParams }) {
-  return (
-    <Suspense fallback={<CheckoutSkeleton />}>
-      <MFBridgeSSR
-        loader={() => import('checkout/App').then(m => m.CheckoutWidget)}
-        props={{ orderId: searchParams.orderId }}
-      />
-    </Suspense>
-  )
-}
-```
-
-The component renders inline as part of the host React tree. Client hydration is automatic — the same `loader` import resolves on the client via Module Federation's runtime, and React hydrates the server-rendered markup without a mismatch.
-
-**Requirement:** the remote's exposed module must be importable on the server (no `window`/`document` at module top-level). Most React components satisfy this; if yours don't, use `url` mode instead.
+**`namespace` is required for the bridge.** Pick any unique string per MF slot and keep it identical on both sides.
 
 ---
 
 ## Parallel composition
 
-Multiple fragments are fetched in parallel automatically. Each `<MFBridgeSSR>` is an independent async component; whichever resolves first streams to the browser first:
+Multiple fragments resolve in parallel. Each `<MFBridgeSSR>` is its own Suspense boundary — whichever resolves first streams to the browser first:
 
 ```tsx
-<Suspense fallback={<HeaderSkeleton />}>
-  <MFBridgeSSR url="https://header.acme.com/fragment" props={{ user }} />
-</Suspense>
-
-<Suspense fallback={<CheckoutSkeleton />}>
-  <MFBridgeSSR loader={() => import('checkout/App')} props={{ orderId }} />
-</Suspense>
-
-<Suspense fallback={<RecommendationsSkeleton />}>
-  <MFBridgeSSR url="https://recs.acme.com/fragment" props={{ userId }} />
-</Suspense>
+<MFBridgeSSR url="https://header.acme.com/fragment" namespace="header" props={{ user }} fallback={<HeaderSkeleton />} />
+<MFBridgeSSR loader={loadCheckout} props={{ orderId }} fallback={<CheckoutSkeleton />} />
+<MFBridgeSSR url="https://recs.acme.com/fragment" namespace="recs" props={{ userId }} fallback={<RecsSkeleton />} />
 ```
 
-Modes can be mixed freely — url and loader fragments on the same page.
+Modes can be mixed freely on the same page.
 
 ---
 
 ## Graceful degradation — combining with `mf-bridge`
 
-If a fragment fails (remote server down, timeout, import error), pass a `degradeFallback` that falls back to client-side rendering via `@mf-toolkit/mf-bridge`:
+Pass `errorFallback` to render something when fetch/loader fails. A common pattern is to degrade to fully-client-side rendering via `MFBridgeLazy`:
 
 ```tsx
 import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
 import { MFBridgeLazy } from '@mf-toolkit/mf-bridge'
 
-<Suspense fallback={<CheckoutSkeleton />}>
-  <MFBridgeSSR
-    url="https://checkout.acme.com/fragment"
-    props={{ orderId }}
-    timeout={2000}
-    degradeFallback={
-      <MFBridgeLazy
-        register={() => import('checkout/entry').then(m => m.register)}
-        props={{ orderId }}
-        fallback={<CheckoutSkeleton />}
-      />
-    }
-  />
-</Suspense>
+<MFBridgeSSR
+  url="https://checkout.acme.com/fragment"
+  namespace="checkout"
+  props={{ orderId }}
+  timeout={2000}
+  fallback={<CheckoutSkeleton />}
+  errorFallback={
+    <MFBridgeLazy
+      register={() => import('checkout/entry').then(m => m.register)}
+      props={{ orderId }}
+      fallback={<CheckoutSkeleton />}
+    />
+  }
+/>
 ```
 
 | Scenario | What the user sees |
 |---|---|
-| Remote server healthy | Full SSR HTML on first paint |
-| Remote server down / timeout | Page still loads; `MFBridgeLazy` mounts after JS hydration |
+| Remote healthy | Full SSR HTML on first paint |
+| Remote down / timeout | `MFBridgeLazy` mounts after JS hydration |
 
 ---
 
-## API reference
+## API
 
 ### `<MFBridgeSSR>` · `@mf-toolkit/mf-ssr`
 
-Async React Server Component. Renders a remote MF fragment during SSR, either by fetching it from an HTTP endpoint (`url`) or by importing and rendering the component inline (`loader`).
+Client-boundary component that renders a remote MF during SSR and keeps it in sync with host props after hydration.
 
 ```tsx
 // url mode
 <MFBridgeSSR
   url="https://checkout.acme.com/fragment"
+  namespace="checkout"
   props={{ orderId: '42' }}
   fallback={<Skeleton />}
+  errorFallback={<Error />}
   timeout={3000}
-  degradeFallback={<MFBridgeLazy … />}
-  errorFallback={<div>Unavailable</div>}
+  onEvent={(type, payload) => { /* handle remote events */ }}
+  commandRef={commandRef}
 />
 
 // loader mode
 <MFBridgeSSR
-  loader={() => import('checkout/App').then(m => m.CheckoutWidget)}
+  loader={loadCheckout}
   props={{ orderId: '42' }}
   fallback={<Skeleton />}
+  errorFallback={<Error />}
   timeout={3000}
-  degradeFallback={<MFBridgeLazy … />}
 />
 ```
 
-| Prop | Type | Description |
-|---|---|---|
-| `url` | `string` | Fragment endpoint URL — use this **or** `loader`, not both |
-| `loader` | `() => Promise<ComponentType<P>>` | Async import of the remote component — use this **or** `url` |
-| `props` | `P` | Props forwarded to the remote component |
-| `fallback` | `ReactNode` | Shown by the Suspense boundary while loading |
-| `timeout` | `number` | Abort after N ms, default `3000` |
-| `degradeFallback` | `ReactNode` | Rendered when the fragment fails (preferred over `errorFallback`) |
-| `errorFallback` | `ReactNode` | Rendered when the fragment fails (if `degradeFallback` not set) |
+| Prop | Type | Applies to | Description |
+|---|---|---|---|
+| `url` | `string` | url mode | Fragment endpoint — use this **or** `loader` |
+| `loader` | `() => Promise<ComponentType<P>>` | loader mode | Async import — use this **or** `url` |
+| `props` | `P` | both | Props forwarded to the remote component |
+| `fallback` | `ReactNode` | both | Suspense fallback while loading |
+| `errorFallback` | `ReactNode` | both | Shown when fetch / loader fails |
+| `timeout` | `number` | both | Abort after N ms, default `3000` |
+| `namespace` | `string` | url mode | Identifies the CustomEvent bus — must match `hydrateWithBridge` on the remote |
+| `onEvent` | `(type, payload) => void` | url mode | Called when the remote emits an event |
+| `commandRef` | `{ current: (type, payload?) => void \| null }` | url mode | Populated with a `send` function for imperative commands |
 
 ---
 
@@ -262,20 +273,20 @@ Reads props from `?props=<url-encoded-json>`, renders via `renderToReadableStrea
 
 ---
 
-### `hydrateRemote(Component, opts?)` · `@mf-toolkit/mf-ssr/hydrate`
+### `hydrateWithBridge(Component, { namespace })` · `@mf-toolkit/mf-bridge/hydrate`
 
-_(url mode only)_ Hydrates server-rendered fragment containers. Call once in the remote's client bundle.
+_(url mode only)_ Remote client bundle entry. Hydrates the server-rendered fragment and subscribes to host-driven prop updates.
 
 ```ts
-import { hydrateRemote } from '@mf-toolkit/mf-ssr/hydrate'
+import { hydrateWithBridge } from '@mf-toolkit/mf-bridge/hydrate'
 
-hydrateRemote(MyComponent, {
-  id?: string       // hydrate only [data-mf-ssr="id"], default: all [data-mf-ssr]
-  selector?: string // override with any CSS selector
+const teardown = hydrateWithBridge(MyComponent, {
+  namespace: 'checkout',              // required — must match host's MFBridgeSSR
+  onCommand: (type, payload) => { … } // optional — receive imperative commands
 })
 ```
 
-Safe to call in SSR environments — returns immediately when `document` is undefined.
+Returns a teardown function. Safe to call in SSR environments — returns a no-op teardown when `document` is undefined.
 
 ---
 
@@ -283,9 +294,9 @@ Safe to call in SSR environments — returns immediately when `document` is unde
 
 | Import path | Use in | Contains |
 |---|---|---|
-| `@mf-toolkit/mf-ssr` | Host server (RSC / SSR) | `MFBridgeSSR`, types |
+| `@mf-toolkit/mf-ssr` | Host (server + client) | `MFBridgeSSR`, types |
 | `@mf-toolkit/mf-ssr/fragment` | Remote server | `createMFReactFragment` |
-| `@mf-toolkit/mf-ssr/hydrate` | Remote client bundle | `hydrateRemote` |
+| `@mf-toolkit/mf-ssr/hydrate` | Remote client bundle | `hydrateRemote` (one-shot, no streaming) |
+| `@mf-toolkit/mf-bridge/hydrate` | Remote client bundle | `hydrateWithBridge` (streaming — recommended) |
 
-Tree-shakeable. Each path has no dependency on the others.
-`/fragment` and `/hydrate` are only needed for `url` mode.
+`MFBridgeSSR` is a client-boundary component: it renders server-side during SSR (including `renderToReadableStream`), hydrates on the client, and re-renders with the parent's state. No manual host-side wiring needed beyond embedding it in your tree.

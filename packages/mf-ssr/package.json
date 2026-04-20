@@ -1,6 +1,6 @@
 {
   "name": "@mf-toolkit/mf-ssr",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Server-side rendering for microfrontends — edge-native streaming fragment composition for polyrepo Module Federation.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
@@ -52,7 +52,11 @@
     "react": "^18 || ^19 || ^20",
     "react-dom": "^18 || ^19 || ^20"
   },
+  "dependencies": {
+    "@mf-toolkit/mf-bridge": "*"
+  },
   "devDependencies": {
+    "@testing-library/react": "^16.3.0",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@types/node": "^25.4.0",
