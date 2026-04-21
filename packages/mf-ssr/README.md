@@ -19,18 +19,9 @@ Zero production dependencies (aside from the tiny internal bridge from `@mf-tool
 
 `@mf-toolkit/mf-bridge` alone mounts microfrontend components on the **client** — after JS loads, after the remote bundle downloads, after React hydrates. For a host page rendered with SSR, the MF slot stays empty until all that happens:
 
-```
-Browser receives host HTML   Browser downloads JS   MF bundle loads    MF renders
-         │                          │                     │                 │
-─────────●──────────────────────────●─────────────────────●─────────────────●────▶
-         ↑                                                                   ↑
-    FCP: host renders                                                  MF visible
-    (MF slot empty)                                               (100–600 ms later)
-```
-
 The consequence: layout shift, blank content in crawlers, degraded Core Web Vitals.
 
-`mf-ssr` fixes it while keeping the part host developers care about most: **host state still drives the remote.** When the host re-renders with new props (e.g. the current user changes, a step advances, a filter updates), the remote re-renders too — automatically.
+![Without mf-ssr: MF slot stays empty until JS loads, bundle downloads, and React hydrates — 100–600 ms after FCP](./assets/flow.png)
 
 ---
 
