@@ -47,6 +47,11 @@ jobs:
         run: npm run build
         working-directory: packages/mf-bridge
 
+      - name: Build mf-bridge (mf-ssr dependency)
+        if: startsWith(github.ref, 'refs/tags/mf-ssr@') || inputs.package == 'mf-ssr'
+        run: npm run build
+        working-directory: packages/mf-bridge
+
       - name: Build mf-ssr
         if: startsWith(github.ref, 'refs/tags/mf-ssr@') || inputs.package == 'mf-ssr'
         run: npm run build
