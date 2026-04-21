@@ -6,6 +6,7 @@ on:
       - 'sprite-plugin@*'
       - 'shared-inspector@*'
       - 'mf-bridge@*'
+      - 'mf-ssr@*'
   workflow_dispatch:
     inputs:
       package:
@@ -16,6 +17,7 @@ on:
           - shared-inspector
           - sprite-plugin
           - mf-bridge
+          - mf-ssr
 
 jobs:
   publish:
@@ -45,6 +47,11 @@ jobs:
         run: npm run build
         working-directory: packages/mf-bridge
 
+      - name: Build mf-ssr
+        if: startsWith(github.ref, 'refs/tags/mf-ssr@') || inputs.package == 'mf-ssr'
+        run: npm run build
+        working-directory: packages/mf-ssr
+
       - name: Test sprite-plugin
         if: startsWith(github.ref, 'refs/tags/sprite-plugin@') || inputs.package == 'sprite-plugin'
         run: npx vitest run packages/sprite-plugin
@@ -57,6 +64,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/mf-bridge@') || inputs.package == 'mf-bridge'
         run: npm run test
         working-directory: packages/mf-bridge
+
+      - name: Test mf-ssr
+        if: startsWith(github.ref, 'refs/tags/mf-ssr@') || inputs.package == 'mf-ssr'
+        run: npm run test
+        working-directory: packages/mf-ssr
 
       - name: Setup npm auth
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
@@ -75,3 +87,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/mf-bridge@') || inputs.package == 'mf-bridge'
         run: npm publish --access public
         working-directory: packages/mf-bridge
+
+      - name: Publish mf-ssr
+        if: startsWith(github.ref, 'refs/tags/mf-ssr@') || inputs.package == 'mf-ssr'
+        run: npm publish --access public
+        working-directory: packages/mf-ssr
