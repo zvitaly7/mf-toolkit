@@ -250,9 +250,95 @@ Client-boundary component that renders a remote MF during SSR and keeps it in sy
 | `fallback` | `ReactNode` | both | Suspense fallback while loading |
 | `errorFallback` | `ReactNode` | both | Shown when fetch / loader fails |
 | `timeout` | `number` | both | Abort after N ms, default `3000` |
+| `onError` | `(error: Error) => void` | both | Observability callback — called when fetch/loader throws (Sentry, DataDog, etc.) |
+| `debug` | `boolean` | both | Emit structured fetch/bus lifecycle logs to the console |
 | `namespace` | `string` | url mode | Identifies the CustomEvent bus — must match `hydrateWithBridge` on the remote |
 | `onEvent` | `(type, payload) => void` | url mode | Called when the remote emits an event |
 | `commandRef` | `{ current: (type, payload?) => void \| null }` | url mode | Populated with a `send` function for imperative commands |
+| `fetchOptions` | `Omit<RequestInit, 'signal'>` | url mode | Extra options forwarded to `fetch()` — auth headers, cookies, tracing headers, etc. |
+| `cacheKey` | `string` | url mode | Per-user cache-slot suffix — required when `fetchOptions` carries auth so users don't share cached HTML |
+| `retryCount` | `number` | url mode | Extra fetch attempts after the first failure, default `0` |
+| `retryDelay` | `number` | url mode | Milliseconds between retry attempts, default `1000` |
+
+---
+
+### Retry and observability
+
+```tsx
+<MFBridgeSSR
+  url="https://checkout.acme.com/fragment"
+  namespace="checkout"
+  props={{ orderId }}
+  retryCount={2}          // 3 attempts total (1 + 2 retries)
+  retryDelay={500}        // 500 ms pause between each
+  onError={(err) => captureException(err)}
+  debug={process.env.NODE_ENV !== 'production'}
+/>
+```
+
+All retries happen inside the single Suspense promise — the fallback stays visible throughout. `onError` fires once, after all retries are exhausted. `errorFallback` then replaces the fallback in the DOM.
+
+---
+
+### Auth isolation with `cacheKey`
+
+The fragment cache is keyed by `url + props + timeout` by default. When `fetchOptions` carries per-user auth (Bearer token, session cookie), different users would share the same cache slot and see each other's fragments. Set `cacheKey` to a stable per-user identifier:
+
+```tsx
+<MFBridgeSSR
+  url="https://account.acme.com/fragment"
+  namespace="account"
+  props={{ view: 'orders' }}
+  fetchOptions={{ headers: { authorization: `Bearer ${token}` } }}
+  cacheKey={userId}   // each user gets their own cache slot
+/>
+```
+
+---
+
+### Cache preloading
+
+Call `preloadFragment` in a route loader, `getServerSideProps`, or a parent Server Component to start the fetch before `<MFBridgeSSR>` renders. When the cache is warm at render time, Suspense skips the fallback entirely.
+
+```ts
+import { preloadFragment } from '@mf-toolkit/mf-ssr'
+
+// Next.js App Router — kick off fetch in the RSC before streaming
+preloadFragment('https://checkout.acme.com/fragment', { orderId })
+
+// Then later in the tree:
+<MFBridgeSSR url="https://checkout.acme.com/fragment" props={{ orderId }} ... />
+```
+
+Call `clearFragmentCache()` after a remote recovers from an error so the next render starts a fresh fetch instead of replaying the cached rejection:
+
+```ts
+import { clearFragmentCache } from '@mf-toolkit/mf-ssr'
+
+// after you detect that the remote is healthy again
+clearFragmentCache()
+```
+
+---
+
+### Type-safe events
+
+Use `TypedSSROnEvent` to get full type inference on `onEvent` handlers:
+
+```ts
+import type { TypedSSROnEvent } from '@mf-toolkit/mf-ssr'
+
+type CheckoutEvents = {
+  orderPlaced: { orderId: string }
+  cancelled: void
+}
+
+const onEvent: TypedSSROnEvent<CheckoutEvents> = (type, payload) => {
+  if (type === 'orderPlaced') console.log(payload.orderId) // typed
+}
+
+<MFBridgeSSR url="…" namespace="checkout" props={…} onEvent={onEvent} />
+```
 
 ---
 
@@ -264,18 +350,27 @@ _(url mode only)_ Wraps a React component into a standard Web fetch handler.
 import { createMFReactFragment } from '@mf-toolkit/mf-ssr/fragment'
 
 const handler = createMFReactFragment(MyComponent, {
-  id?: string   // fragment identifier, defaults to Component.displayName ?? Component.name
+  id?: string           // fragment id, defaults to Component.displayName ?? Component.name
+  cacheControl?: string // Cache-Control header value, default: 'no-store'
+  vary?: string         // Vary header value, omitted by default
 })
 // handler: (req: Request) => Promise<Response>
 ```
 
 Reads props from `?props=<url-encoded-json>`, renders via `renderToReadableStream`, embeds serialized props in a `<script type="application/json" data-mf-props>` tag, and returns a streaming `Response`.
 
+```ts
+// CDN-cacheable public fragment
+const handler = createMFReactFragment(ProductCard, {
+  cacheControl: 'public, s-maxage=60, stale-while-revalidate=30',
+  vary: 'Accept-Language',
+})
+
 ---
 
 ### `hydrateWithBridge(Component, { namespace })` · `@mf-toolkit/mf-bridge/hydrate`
 
-_(url mode only)_ Remote client bundle entry. Hydrates the server-rendered fragment and subscribes to host-driven prop updates.
+_(url mode only — recommended)_ Remote client bundle entry. Hydrates the server-rendered fragment and subscribes to host-driven prop updates via `DOMEventBus`.
 
 ```ts
 import { hydrateWithBridge } from '@mf-toolkit/mf-bridge/hydrate'
@@ -290,16 +385,46 @@ Returns a teardown function. Safe to call in SSR environments — returns a no-o
 
 ---
 
+### `hydrateRemote(Component, opts?)` · `@mf-toolkit/mf-ssr/hydrate`
+
+_(url mode only — one-shot)_ Lighter alternative to `hydrateWithBridge`. Reads the serialized props from the `<script data-mf-props>` tag and calls `hydrateRoot`. Does **not** wire up the `DOMEventBus`, so host prop changes after initial hydration won't reach the remote.
+
+Use `hydrateRemote` when:
+- The remote is purely presentational — no ongoing prop updates needed after first render.
+- You want the smallest possible client bundle and the remote is self-contained.
+
+Use `hydrateWithBridge` when the host needs to stream prop changes, send commands, or receive events from the remote.
+
+```ts
+import { hydrateRemote } from '@mf-toolkit/mf-ssr/hydrate'
+
+hydrateRemote(MyComponent)
+```
+
+---
+
 ## Package exports
 
 | Import path | Use in | Contains |
 |---|---|---|
-| `@mf-toolkit/mf-ssr` | Host (server + client) | `MFBridgeSSR`, types |
+| `@mf-toolkit/mf-ssr` | Host (server + client) | `MFBridgeSSR`, `preloadFragment`, `clearFragmentCache`, types |
 | `@mf-toolkit/mf-ssr/fragment` | Remote server | `createMFReactFragment` |
-| `@mf-toolkit/mf-ssr/hydrate` | Remote client bundle | `hydrateRemote` (one-shot, no streaming) |
-| `@mf-toolkit/mf-bridge/hydrate` | Remote client bundle | `hydrateWithBridge` (streaming — recommended) |
+| `@mf-toolkit/mf-ssr/hydrate` | Remote client bundle | `hydrateRemote` (one-shot, no prop streaming) |
+| `@mf-toolkit/mf-bridge/hydrate` | Remote client bundle | `hydrateWithBridge` (full streaming — recommended for url mode) |
 
 `MFBridgeSSR` is a client-boundary component: it renders server-side during SSR (including `renderToReadableStream`), hydrates on the client, and re-renders with the parent's state. No manual host-side wiring needed beyond embedding it in your tree.
+
+---
+
+## Integration examples
+
+The `examples/` folder contains runnable integration setups:
+
+| Example | Path | What it shows |
+|---|---|---|
+| Next.js App Router | `examples/nextjs/` | Host client component + RSC preloading + remote Route Handler + `hydrateWithBridge` client entry |
+| Cloudflare Worker + Hono | `examples/cloudflare-hono/` | Fragment endpoint with CDN `Cache-Control` on a Cloudflare Worker |
+| Bun | `examples/bun/` | Standalone fragment server + host server with `preloadFragment` |
 
 ---
 
