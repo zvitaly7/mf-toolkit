@@ -44,7 +44,7 @@ The consequence: layout shift, blank content in crawlers, degraded Core Web Vita
 | Remote client hydration | Automatic (host React tree) | `hydrateWithBridge()` in remote bundle |
 | Isolation | Inline in host tree | Full (separate React root) |
 | Prop streaming on host re-render | Native React re-render | DOM CustomEvents (`DOMEventBus`) |
-| Best for | React-only stack with S3 remotes | Polyrepo teams, non-React remotes |
+| Best for | Remote ships a static bundle (no HTTP server) | Remote has its own HTTP server, or uses a non-React framework |
 
 Both modes use the same `<MFBridgeSSR>` component — just swap `url` for `loader`.
 
