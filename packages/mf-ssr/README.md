@@ -72,8 +72,8 @@ npm install react@^18 react-dom@^18
 No extra server on the remote side. The host imports the component at SSR time and renders it directly inside its own React tree. Host state changes just re-render the remote like any other React component.
 
 ```tsx
-// host-app/app/page.tsx
-'use client' // if the page lives inside a client boundary
+// host-app/app/page.tsx  ('use client' because we use useState)
+'use client'
 import { useState } from 'react'
 import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
 
@@ -350,9 +350,9 @@ _(url mode only)_ Wraps a React component into a standard Web fetch handler.
 import { createMFReactFragment } from '@mf-toolkit/mf-ssr/fragment'
 
 const handler = createMFReactFragment(MyComponent, {
-  id?: string           // fragment id, defaults to Component.displayName ?? Component.name
-  cacheControl?: string // Cache-Control header value, default: 'no-store'
-  vary?: string         // Vary header value, omitted by default
+  // id: 'my-widget'    fragment id — defaults to Component.displayName ?? Component.name
+  // cacheControl: '…'  Cache-Control response header — default: 'no-store'
+  // vary: '…'          Vary response header — omitted by default
 })
 // handler: (req: Request) => Promise<Response>
 ```
@@ -365,6 +365,7 @@ const handler = createMFReactFragment(ProductCard, {
   cacheControl: 'public, s-maxage=60, stale-while-revalidate=30',
   vary: 'Accept-Language',
 })
+```
 
 ---
 

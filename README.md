@@ -146,19 +146,43 @@ import { MFBridgeLazy } from '@mf-toolkit/mf-bridge'
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/mf-ssr?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/mf-ssr)
 [![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
+[![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
-**Out-of-box SSR for microfrontends in a polyrepo.** Renders the remote MF inside the host's SSR response, hydrates on the client, and lets host state drive remote re-renders automatically — no extra wiring, no async-RSC gymnastics.
+**MF content on first paint — SSR for microfrontends without a shared build.**
 
-One component (`<MFBridgeSSR>`), two modes:
-
-- **`loader` mode** — remote on S3/CDN / Module Federation; host imports the component and renders it inline. Prop updates flow as a normal React re-render.
-- **`url` mode** — remote exposes an HTTP fragment endpoint; host fetches HTML during SSR and inlines it. After hydration, host prop changes stream to the remote via `DOMEventBus`. Works with any remote stack (React, Vue, Svelte, vanilla).
-
-Zero production deps (aside from the tiny `@mf-toolkit/mf-bridge`). Works on Cloudflare Workers, Vercel Edge, Bun, and Node 18+.
+Each remote team deploys their own server (or static bundle). `mf-ssr` fetches the remote's HTML during SSR and inlines it into the host response. On the client, host state changes stream to the remote via `DOMEventBus` — no re-fetch, no layout shift, no blank MF slot in crawlers.
 
 ```bash
 npm install @mf-toolkit/mf-ssr
 ```
+
+```tsx
+// Remote side — expose a fragment endpoint (Hono, Next.js Route Handler, Bun, CF Worker…)
+import { createMFReactFragment } from '@mf-toolkit/mf-ssr/fragment'
+export const GET = createMFReactFragment(CheckoutWidget)
+
+// Host side — drop it in your React tree like any component
+import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
+
+<MFBridgeSSR
+  url="https://checkout.acme.com/fragment"
+  namespace="checkout"
+  props={{ orderId, step }}
+  fallback={<CheckoutSkeleton />}
+  onEvent={(type) => { if (type === 'completed') goToConfirmation() }}
+/>
+```
+
+**What it does:**
+
+- 🖥️ **Zero-JS first paint** — remote HTML arrives inline in the host SSR stream; no client-side MF slot flash or layout shift
+- 📡 **Prop streaming** — host state changes reach the remote via `DOMEventBus` after hydration; no re-fetch
+- 🏗️ **No shared build** — each team owns their own server and bundle; host fetches plain HTTP
+- 🌐 **Any remote framework** — `url` mode works with React, Vue, Svelte, or vanilla; `loader` mode for React-on-CDN remotes
+- ⚡ **Edge-native** — Web Streams API only; runs on Cloudflare Workers, Vercel Edge, Bun, and Node 18+
+- 🛡️ **Built-in resilience** — retry, timeout, `onError` observability, `errorFallback`, and `preloadFragment` cache warming
+
+> Zero production dependencies (aside from the tiny `@mf-toolkit/mf-bridge`). React 18–20 peer dep.
 
 [![📖 Full docs, API reference & examples →](https://img.shields.io/badge/📖_Full_docs_&_API_reference_→-blue?style=for-the-badge)](./packages/mf-ssr)
 
