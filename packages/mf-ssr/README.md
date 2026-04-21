@@ -23,6 +23,10 @@ The consequence: layout shift, blank content in crawlers, degraded Core Web Vita
 
 ![Without mf-ssr: MF slot stays empty until JS loads, bundle downloads, and React hydrates — 100–600 ms after FCP](./assets/flow.png)
 
+`mf-ssr` fixes it while keeping the part host developers care about most: **host state still drives the remote.** When the host re-renders with new props, the remote re-renders too — automatically.
+
+![How mf-ssr works: url mode fetches fragment HTML from the remote server during SSR; loader mode imports the component directly from CDN — both deliver MF content on first paint](./assets/workflow.png)
+
 ---
 
 ## Choosing a mode

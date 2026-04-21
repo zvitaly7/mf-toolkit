@@ -148,6 +148,8 @@ import { MFBridgeLazy } from '@mf-toolkit/mf-bridge'
 [![react](https://img.shields.io/badge/react-18%20%7C%2019%20%7C%2020-61DAFB?logo=react)](https://react.dev)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js)](https://nodejs.org)
 
+![mf-ssr: url mode and loader mode both deliver MF content on first paint — no empty slot, no layout shift](./packages/mf-ssr/assets/workflow.png)
+
 **MF content on first paint — SSR for microfrontends without a shared build.**
 
 Each remote team deploys their own server (or static bundle). `mf-ssr` fetches the remote's HTML during SSR and inlines it into the host response. On the client, host state changes stream to the remote via `DOMEventBus` — no re-fetch, no layout shift, no blank MF slot in crawlers.
