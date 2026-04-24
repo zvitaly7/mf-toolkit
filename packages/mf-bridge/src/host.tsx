@@ -22,10 +22,25 @@ function dbg(namespace: string, enabled: boolean, event: string, ...data: unknow
 
 // ─── Preload cache ────────────────────────────────────────────────────────────
 
+// Bounded LRU cap. Most apps use a handful of stable loader refs defined at
+// module scope, but inline loaders (anti-pattern, but happens in practice) can
+// leak the cache indefinitely. When full, the oldest entry is evicted — its
+// in-flight promise keeps running, just no longer shared with new requesters.
+const PRELOAD_CACHE_MAX = 50
 const preloadCache = new Map<
   () => Promise<RegisterFn<any>>,
   Promise<RegisterFn<any>>
 >()
+
+function setPreloadCache(
+  loader: () => Promise<RegisterFn<any>>,
+  promise: Promise<RegisterFn<any>>,
+): void {
+  if (preloadCache.size >= PRELOAD_CACHE_MAX && !preloadCache.has(loader)) {
+    preloadCache.delete(preloadCache.keys().next().value as () => Promise<RegisterFn<any>>)
+  }
+  preloadCache.set(loader, promise)
+}
 
 
 /**
@@ -51,7 +66,10 @@ export function preloadMF<T extends RegisterFn<any>>(
   loader: () => Promise<T>,
 ): void {
   if (!preloadCache.has(loader)) {
-    preloadCache.set(loader, loader() as Promise<RegisterFn<any>>)
+    setPreloadCache(
+      loader as () => Promise<RegisterFn<any>>,
+      loader() as Promise<RegisterFn<any>>,
+    )
   }
 }
 
@@ -167,6 +185,13 @@ export interface MFBridgeHydratedProps<P extends object = object> {
   commandRef?: { current: ((type: string, payload?: unknown) => void) | null }
   /** Enable `console.debug` logging. */
   debug?: boolean
+  /**
+   * Called when the container element cannot be found in the DOM.
+   * Use for observability — missing containers usually indicate a namespace
+   * mismatch between `MFBridgeSSR` (RSC), `MFBridgeHydrated` (client), and
+   * `hydrateWithBridge` (remote bundle).
+   */
+  onError?: (error: Error) => void
 }
 
 /**
@@ -192,6 +217,7 @@ export function MFBridgeHydrated<P extends object>({
   onEvent,
   commandRef,
   debug = false,
+  onError,
 }: MFBridgeHydratedProps<P>): null {
   const busRef = useRef<DOMEventBus | null>(null)
   const isFirstRender = useRef(true)
@@ -199,10 +225,17 @@ export function MFBridgeHydrated<P extends object>({
   onEventRef.current = onEvent
   const commandRefRef = useRef(commandRef)
   commandRefRef.current = commandRef
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
 
   useEffect(() => {
     const el = document.querySelector(`[data-mf-namespace="${namespace}"]`) as HTMLElement | null
-    if (!el) return
+    if (!el) {
+      onErrorRef.current?.(
+        new Error(`MFBridgeHydrated: no element with [data-mf-namespace="${namespace}"] found`),
+      )
+      return
+    }
 
     isFirstRender.current = true
     const bus = new DOMEventBus(el, namespace)
@@ -789,7 +822,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
           promise = cached
         } else {
           promise = register() as Promise<RegisterFn<any>>
-          preloadCache.set(register, promise)
+          setPreloadCache(register as () => Promise<RegisterFn<any>>, promise)
         }
       } else {
         preloadCache.delete(register)

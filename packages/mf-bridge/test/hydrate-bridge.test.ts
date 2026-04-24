@@ -242,6 +242,43 @@ describe('MFBridgeHydrated', () => {
   })
 })
 
+describe('MFBridgeHydrated — onError', () => {
+  it('calls onError when the container is missing', async () => {
+    const onError = vi.fn()
+
+    await act(async () => {
+      render(createElement(MFBridgeHydrated, {
+        namespace: 'missing-namespace',
+        props: { x: 1 },
+        onError,
+      }))
+    })
+
+    expect(onError).toHaveBeenCalledTimes(1)
+    const err = onError.mock.calls[0]?.[0] as Error
+    expect(err).toBeInstanceOf(Error)
+    expect(err.message).toContain('missing-namespace')
+  })
+
+  it('does not call onError when the container is present', async () => {
+    const host = document.createElement('div')
+    host.setAttribute('data-mf-namespace', 'present-namespace')
+    document.body.appendChild(host)
+    const onError = vi.fn()
+
+    await act(async () => {
+      render(createElement(MFBridgeHydrated, {
+        namespace: 'present-namespace',
+        props: { x: 1 },
+        onError,
+      }))
+    })
+
+    expect(onError).not.toHaveBeenCalled()
+    host.remove()
+  })
+})
+
 // ─── Integration: hydrateWithBridge + MFBridgeHydrated together ──────────────
 
 describe('integration — full SSR + prop streaming cycle', () => {

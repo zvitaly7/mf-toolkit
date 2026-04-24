@@ -7,6 +7,38 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.0] — 2026-04-24
+
+First stable release. No breaking API changes — everything from 0.4.0 keeps working.
+
+### Added
+
+- **`onError` on `MFBridgeHydrated`** — observability callback fired when the
+  `[data-mf-namespace]` container is not in the DOM. Use for Sentry / DataDog
+  to catch namespace mismatches between `MFBridgeSSR`, `MFBridgeHydrated`, and
+  `hydrateWithBridge` in production.
+
+- **`examples/` folder** — integration patterns for React and Vue (via
+  `defineMFEntry`) remotes plus a host-app `CheckoutSlot` showing `retryCount`,
+  `commandRef`, `TypedOnEvent`, and `preloadMF` in context.
+
+- **`bench/` folder** — Vitest benchmarks for the hot paths:
+  `DOMEventBus.send` throughput (1/10/100 listeners), `on + unsub` cycle,
+  `MFBridge` mount/unmount cycle, and prop-update throughput. Run with
+  `npm run bench`.
+
+- **`LICENSE` file** — MIT license now distributed inside the package (npm
+  ships the in-package file verbatim).
+
+### Fixed
+
+- **`preloadCache` is now bounded** — capped at 50 entries with LRU eviction.
+  Previously the cache grew without limit, leaking memory in long-lived apps
+  that created loader references inline. Stable module-level loaders (the
+  recommended pattern) are unaffected.
+
+---
+
 ## [0.4.0] — 2026-04-19
 
 ### Added
