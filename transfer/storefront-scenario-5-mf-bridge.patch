@@ -1,0 +1,1310 @@
+From 96bfcb9297ac3d4c47364913abe9fa35f9b82649 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 24 Apr 2026 09:41:57 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20add=20scenario=205=20=E2=80=94=20mf-bri?=
+ =?UTF-8?q?dge=20integration=20demo?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Demonstrates @mf-toolkit/mf-bridge on the existing shell + catalog + checkout
+MF stack. Remotes expose createMFEntry instead of bare React components;
+the shell uses MFBridgeLazy with typed events, commandRef, retryCount,
+timeout, errorFallback and debug mode.
+
+Key interaction shown: clicking "Add to Cart" in the catalog remote emits
+a productSelected event → shell forwards it as an addItem command to the
+checkout remote → Cart updates. Placing an order emits orderPlaced back to
+the shell → success toast appears. The "Clear Cart" button sends a clearCart
+command from the shell to the checkout remote.
+
+Each remote also runs standalone in dev mode (npm start without the shell).
+---
+ README.md                                     | 108 +++++++++-
+ .../5-mf-bridge/apps/catalog/package.json     |  24 +++
+ .../apps/catalog/public/index.html            |  11 +
+ .../apps/catalog/shared-config.json           |   4 +
+ .../apps/catalog/src/ProductList.tsx          |  76 +++++++
+ .../apps/catalog/src/bootstrap.tsx            |  11 +
+ .../5-mf-bridge/apps/catalog/src/bridge.ts    |  16 ++
+ .../5-mf-bridge/apps/catalog/src/entry.ts     |  17 ++
+ .../5-mf-bridge/apps/catalog/src/index.tsx    |   1 +
+ .../5-mf-bridge/apps/catalog/src/types.ts     |  10 +
+ .../5-mf-bridge/apps/catalog/tsconfig.json    |  15 ++
+ .../apps/catalog/webpack.config.js            |  50 +++++
+ .../5-mf-bridge/apps/checkout/package.json    |  24 +++
+ .../apps/checkout/public/index.html           |  11 +
+ .../apps/checkout/shared-config.json          |   4 +
+ .../5-mf-bridge/apps/checkout/src/Cart.tsx    | 105 +++++++++
+ .../apps/checkout/src/bootstrap.tsx           |  11 +
+ .../5-mf-bridge/apps/checkout/src/bridge.ts   |  28 +++
+ .../5-mf-bridge/apps/checkout/src/entry.ts    |  28 +++
+ .../5-mf-bridge/apps/checkout/src/index.tsx   |   1 +
+ .../5-mf-bridge/apps/checkout/src/types.ts    |  15 ++
+ .../5-mf-bridge/apps/checkout/tsconfig.json   |  15 ++
+ .../apps/checkout/webpack.config.js           |  50 +++++
+ scenarios/5-mf-bridge/apps/shell/package.json |  25 +++
+ .../5-mf-bridge/apps/shell/public/index.html  |  15 ++
+ .../5-mf-bridge/apps/shell/shared-config.json |   5 +
+ scenarios/5-mf-bridge/apps/shell/src/App.tsx  | 200 ++++++++++++++++++
+ .../5-mf-bridge/apps/shell/src/bootstrap.tsx  |  10 +
+ .../apps/shell/src/declarations.d.ts          |  12 ++
+ .../5-mf-bridge/apps/shell/src/index.tsx      |   1 +
+ .../apps/shell/src/store/authStore.ts         |  18 ++
+ .../5-mf-bridge/apps/shell/tsconfig.json      |  15 ++
+ .../5-mf-bridge/apps/shell/webpack.config.js  |  56 +++++
+ 33 files changed, 989 insertions(+), 3 deletions(-)
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/package.json
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/public/index.html
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/shared-config.json
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/src/ProductList.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/src/bootstrap.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/src/bridge.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/src/entry.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/src/index.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/src/types.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/tsconfig.json
+ create mode 100644 scenarios/5-mf-bridge/apps/catalog/webpack.config.js
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/package.json
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/public/index.html
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/shared-config.json
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/src/Cart.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/src/bootstrap.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/src/bridge.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/src/entry.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/src/index.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/src/types.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/tsconfig.json
+ create mode 100644 scenarios/5-mf-bridge/apps/checkout/webpack.config.js
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/package.json
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/public/index.html
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/shared-config.json
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/src/App.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/src/bootstrap.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/src/declarations.d.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/src/index.tsx
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/src/store/authStore.ts
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/tsconfig.json
+ create mode 100644 scenarios/5-mf-bridge/apps/shell/webpack.config.js
+
+diff --git a/README.md b/README.md
+index e0ff4ae..1a76c45 100644
+--- a/README.md
++++ b/README.md
+@@ -5,8 +5,9 @@
+ [![react](https://img.shields.io/badge/react-18.3.1-61DAFB?logo=react)](https://react.dev)
+ [![webpack](https://img.shields.io/badge/webpack-5-8DD6F9?logo=webpack)](https://webpack.js.org)
+ [![inspector](https://img.shields.io/npm/v/@mf-toolkit/shared-inspector?label=%40mf-toolkit%2Fshared-inspector&color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/shared-inspector)
++[![mf-bridge](https://img.shields.io/npm/v/@mf-toolkit/mf-bridge?label=%40mf-toolkit%2Fmf-bridge&color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/mf-bridge)
+ 
+-A demonstration repository for [@mf-toolkit/shared-inspector](https://github.com/zvitaly7/mf-toolkit/tree/main/packages/shared-inspector). Four real-world microfrontend scenarios — healthy, drifted, federation-broken, and critically misconfigured — all in one branch, runnable with a single command.
++A demonstration repository for the [@mf-toolkit](https://github.com/zvitaly7/mf-toolkit) suite. Five real-world microfrontend scenarios — healthy, drifted, federation-broken, critically misconfigured, and a full mf-bridge integration — all in one branch, runnable with a single command.
+ 
+ ```bash
+ git clone https://github.com/zvitaly7/mf-storefront-demo
+@@ -41,8 +42,12 @@ mf-storefront-demo/
+ │   │   └── apps/{shell,catalog,checkout}/
+ │   ├── 3-federation-issues/ ← per-app 100/100, federation reveals hidden issues
+ │   │   └── apps/{shell,catalog,checkout}/
+-│   └── 4-critical/          ← everything wrong: shell 20, catalog 1, checkout 4
++│   ├── 4-critical/          ← everything wrong: shell 20, catalog 1, checkout 4
++│   │   └── apps/{shell,catalog,checkout}/
++│   └── 5-mf-bridge/         ← mf-bridge: typed events, commands, error recovery
+ │       └── apps/{shell,catalog,checkout}/
++│           ├── src/entry.ts         ← createMFEntry on remote side
++│           └── src/App.tsx          ← MFBridgeLazy on host side
+ ├── scripts/
+ │   └── federation-gate.ts   ← CI score gate
+ ├── demo.sh                  ← runs all scenarios end-to-end
+@@ -190,6 +195,102 @@ checkout Score: 4/100    🔴 CRITICAL
+ 
+ ---
+ 
++### Scenario 5 — mf-bridge Integration
++
++The same shell + catalog + checkout architecture, now using [@mf-toolkit/mf-bridge](https://github.com/zvitaly7/mf-toolkit/tree/main/packages/mf-bridge) instead of raw `React.lazy`.
++
++**What changes on the remote side (catalog, checkout):**
++
++Each remote exposes `./entry` via `createMFEntry` instead of a bare component:
++
++```ts
++// checkout/src/entry.ts
++import { createMFEntry } from '@mf-toolkit/mf-bridge/entry';
++import Cart from './Cart';
++import { setCheckoutEmit, dispatchCommand } from './bridge';
++
++export const register = createMFEntry(
++  Cart,
++  ({ emit, onCommand }) => {
++    setCheckoutEmit(emit);                 // Cart can now emit → host
++    onCommand((type, payload) => {
++      if (type === 'addItem')   dispatchCommand({ type: 'addItem', payload });
++      if (type === 'clearCart') dispatchCommand({ type: 'clearCart' });
++    });
++  },
++  () => setCheckoutEmit(null),             // cleanup on unmount
++);
++```
++
++**What changes on the host side (shell):**
++
++`React.lazy + Suspense` is replaced by `MFBridgeLazy` with full lifecycle:
++
++```tsx
++// shell/src/App.tsx (key excerpt)
++const onCatalogEvent: TypedOnEvent<CatalogEvents> = (type, payload) => {
++  if (type === 'productSelected') {
++    // Forward as a command to the checkout remote
++    checkoutCommandRef.current?.('addItem', payload);
++  }
++};
++
++<MFBridgeLazy
++  register={loadCheckout}
++  props={{}}
++  fallback={<CartSkeleton />}
++  errorFallback={<p>Cart unavailable. Retrying…</p>}
++  onError={(err, retry) => setTimeout(retry, 2000)}
++  retryCount={2}
++  timeout={5000}
++  onEvent={onCheckoutEvent}
++  commandRef={checkoutCommandRef}
++  debug={process.env.NODE_ENV !== 'production'}
++/>
++```
++
++**Event → Command round-trip:**
++
++```
++[catalog]  "Add to Cart" click
++    │  catalogEmit('productSelected', { id, name, price })
++    ▼
++[shell]    onCatalogEvent receives productSelected
++    │  checkoutCommandRef.current?.('addItem', payload)
++    ▼
++[checkout] onCommand handler → dispatchCommand → Cart.tsx useState
++    │  Cart renders with new item
++    │  User clicks "Place Order"
++    │  checkoutEmit('orderPlaced', { items, total })
++    ▼
++[shell]    onCheckoutEvent → shows success toast
++```
++
++**What you get for free vs raw `React.lazy`:**
++
++| Raw `React.lazy` | `MFBridgeLazy` |
++|---|---|
++| No error boundary | `errorFallback` + automatic reset |
++| No retry | `retryCount` + `retryDelay` |
++| No timeout | `timeout` with `AbortSignal` |
++| No events | Typed `onEvent` / `commandRef` |
++| No debug tracing | `debug` flag |
++| Module load only | Preload cache via `preloadMF` |
++
++**Running scenario 5:**
++
++```bash
++# Prerequisites: @mf-toolkit/mf-bridge must be published or linked locally
++# npm link @mf-toolkit/mf-bridge   (if working from source)
++
++cd scenarios/5-mf-bridge/apps/catalog  && npm install && npm start &
++cd scenarios/5-mf-bridge/apps/checkout && npm install && npm start &
++cd scenarios/5-mf-bridge/apps/shell    && npm install && npm start
++# Open http://localhost:3000
++```
++
++---
++
+ ## Depth Analysis — Barrel Pattern
+ 
+ The `catalog` app is structured so that `lodash` is never imported directly in component files:
+@@ -302,7 +403,8 @@ The dynamic import is not optional — it gives webpack the chance to negotiate
+ 
+ ## Related
+ 
+-- [@mf-toolkit/shared-inspector](https://github.com/zvitaly7/mf-toolkit/tree/main/packages/shared-inspector) — the tool this demo is built for
++- [@mf-toolkit/shared-inspector](https://github.com/zvitaly7/mf-toolkit/tree/main/packages/shared-inspector) — MF config analyzer (scenarios 1–4)
++- [@mf-toolkit/mf-bridge](https://github.com/zvitaly7/mf-toolkit/tree/main/packages/mf-bridge) — host/remote bridge with typed events and commands (scenario 5)
+ - [mf-toolkit](https://github.com/zvitaly7/mf-toolkit) — the full toolkit
+ 
+ ## License
+diff --git a/scenarios/5-mf-bridge/apps/catalog/package.json b/scenarios/5-mf-bridge/apps/catalog/package.json
+new file mode 100644
+index 0000000..856969b
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/package.json
+@@ -0,0 +1,24 @@
++{
++  "name": "catalog",
++  "version": "1.0.0",
++  "private": true,
++  "scripts": {
++    "start": "webpack serve --mode development",
++    "build": "webpack --mode production"
++  },
++  "dependencies": {
++    "@mf-toolkit/mf-bridge": "^1.0.0",
++    "react": "18.3.1",
++    "react-dom": "18.3.1"
++  },
++  "devDependencies": {
++    "@types/react": "^18.2.0",
++    "@types/react-dom": "^18.2.0",
++    "html-webpack-plugin": "^5.6.0",
++    "ts-loader": "^9.5.1",
++    "typescript": "^5.3.3",
++    "webpack": "^5.90.3",
++    "webpack-cli": "^5.1.4",
++    "webpack-dev-server": "^5.0.4"
++  }
++}
+diff --git a/scenarios/5-mf-bridge/apps/catalog/public/index.html b/scenarios/5-mf-bridge/apps/catalog/public/index.html
+new file mode 100644
+index 0000000..3002f9b
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/public/index.html
+@@ -0,0 +1,11 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>Catalog — standalone</title>
++  </head>
++  <body>
++    <div id="root"></div>
++  </body>
++</html>
+diff --git a/scenarios/5-mf-bridge/apps/catalog/shared-config.json b/scenarios/5-mf-bridge/apps/catalog/shared-config.json
+new file mode 100644
+index 0000000..1843090
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/shared-config.json
+@@ -0,0 +1,4 @@
++{
++  "react": { "singleton": true, "requiredVersion": "18.3.1" },
++  "react-dom": { "singleton": true, "requiredVersion": "18.3.1" }
++}
+diff --git a/scenarios/5-mf-bridge/apps/catalog/src/ProductList.tsx b/scenarios/5-mf-bridge/apps/catalog/src/ProductList.tsx
+new file mode 100644
+index 0000000..2e707bd
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/src/ProductList.tsx
+@@ -0,0 +1,76 @@
++import React, { useState } from 'react';
++import { catalogEmit } from './bridge';
++import type { Product } from './types';
++
++const PRODUCTS: Product[] = [
++  { id: '1', name: 'Wireless Headphones', price: 9999, category: 'Electronics' },
++  { id: '2', name: 'Running Shoes',       price: 7999, category: 'Sports' },
++  { id: '3', name: 'Coffee Maker',        price: 4999, category: 'Home' },
++  { id: '4', name: 'Yoga Mat',            price: 2999, category: 'Sports' },
++  { id: '5', name: 'Smart Watch',         price: 19999, category: 'Electronics' },
++  { id: '6', name: 'Desk Lamp',           price: 3499, category: 'Home' },
++];
++
++function formatPrice(cents: number): string {
++  return `$${(cents / 100).toFixed(2)}`;
++}
++
++export default function ProductList() {
++  const [added, setAdded] = useState<Set<string>>(new Set());
++
++  function handleAdd(p: Product) {
++    // Emit → shell receives → shell sends addItem command to checkout
++    catalogEmit('productSelected', { id: p.id, name: p.name, price: p.price });
++    setAdded((prev) => new Set(prev).add(p.id));
++    setTimeout(() => setAdded((prev) => {
++      const next = new Set(prev);
++      next.delete(p.id);
++      return next;
++    }), 800);
++  }
++
++  return (
++    <div>
++      <h2 style={{ marginTop: 0 }}>Product Catalog</h2>
++      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
++        {PRODUCTS.map((p) => (
++          <li
++            key={p.id}
++            style={{
++              display: 'flex',
++              alignItems: 'center',
++              justifyContent: 'space-between',
++              padding: '0.6rem 0',
++              borderBottom: '1px solid #eee',
++            }}
++          >
++            <span>
++              <strong>{p.name}</strong>
++              <span style={{ marginLeft: '0.75rem', color: '#888', fontSize: '0.85em' }}>
++                {p.category}
++              </span>
++            </span>
++            <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
++              <span style={{ fontWeight: 600 }}>{formatPrice(p.price)}</span>
++              <button
++                onClick={() => handleAdd(p)}
++                style={{
++                  padding: '0.25rem 0.75rem',
++                  background: added.has(p.id) ? '#4caf50' : '#1976d2',
++                  color: '#fff',
++                  border: 'none',
++                  borderRadius: 4,
++                  cursor: 'pointer',
++                  fontSize: '0.85em',
++                  transition: 'background 0.2s',
++                }}
++              >
++                {added.has(p.id) ? '✓ Added' : '+ Cart'}
++              </button>
++            </span>
++          </li>
++        ))}
++      </ul>
++    </div>
++  );
++}
+diff --git a/scenarios/5-mf-bridge/apps/catalog/src/bootstrap.tsx b/scenarios/5-mf-bridge/apps/catalog/src/bootstrap.tsx
+new file mode 100644
+index 0000000..cefbed7
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/src/bootstrap.tsx
+@@ -0,0 +1,11 @@
++import React from 'react';
++import { createRoot } from 'react-dom/client';
++import ProductList from './ProductList';
++
++// Standalone dev mode — runs without the shell
++const root = createRoot(document.getElementById('root')!);
++root.render(
++  <React.StrictMode>
++    <ProductList />
++  </React.StrictMode>
++);
+diff --git a/scenarios/5-mf-bridge/apps/catalog/src/bridge.ts b/scenarios/5-mf-bridge/apps/catalog/src/bridge.ts
+new file mode 100644
+index 0000000..9fae63a
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/src/bridge.ts
+@@ -0,0 +1,16 @@
++import type { CatalogEvents } from './types';
++
++// Module-level emit ref set by entry.ts and called by ProductList.
++// Avoids circular deps between entry.ts → ProductList → entry.ts.
++let _emit: ((type: string, payload?: unknown) => void) | null = null;
++
++export function setEmit(fn: ((type: string, payload?: unknown) => void) | null): void {
++  _emit = fn;
++}
++
++export function catalogEmit<K extends keyof CatalogEvents>(
++  type: K,
++  payload: CatalogEvents[K],
++): void {
++  _emit?.(type, payload);
++}
+diff --git a/scenarios/5-mf-bridge/apps/catalog/src/entry.ts b/scenarios/5-mf-bridge/apps/catalog/src/entry.ts
+new file mode 100644
+index 0000000..75c5af9
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/src/entry.ts
+@@ -0,0 +1,17 @@
++// Remote entry — exposed via ModuleFederationPlugin as './entry'.
++// The host shell imports this and passes it to MFBridgeLazy as `register`.
++import { createMFEntry } from '@mf-toolkit/mf-bridge/entry';
++import ProductList from './ProductList';
++import { setEmit } from './bridge';
++
++export const register = createMFEntry(
++  ProductList,
++  // onBeforeMount — wire emit so ProductList can push events to the host
++  ({ emit }) => {
++    setEmit(emit);
++  },
++  // onBeforeUnmount — detach emit to avoid stale closures
++  () => {
++    setEmit(null);
++  },
++);
+diff --git a/scenarios/5-mf-bridge/apps/catalog/src/index.tsx b/scenarios/5-mf-bridge/apps/catalog/src/index.tsx
+new file mode 100644
+index 0000000..b93c7a0
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/src/index.tsx
+@@ -0,0 +1 @@
++import('./bootstrap');
+diff --git a/scenarios/5-mf-bridge/apps/catalog/src/types.ts b/scenarios/5-mf-bridge/apps/catalog/src/types.ts
+new file mode 100644
+index 0000000..0f1e92a
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/src/types.ts
+@@ -0,0 +1,10 @@
++export interface Product {
++  id: string;
++  name: string;
++  price: number;
++  category: string;
++}
++
++export type CatalogEvents = {
++  productSelected: { id: string; name: string; price: number };
++};
+diff --git a/scenarios/5-mf-bridge/apps/catalog/tsconfig.json b/scenarios/5-mf-bridge/apps/catalog/tsconfig.json
+new file mode 100644
+index 0000000..22fdbf7
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/tsconfig.json
+@@ -0,0 +1,15 @@
++{
++  "compilerOptions": {
++    "target": "ES2020",
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "jsx": "react-jsx",
++    "strict": true,
++    "esModuleInterop": true,
++    "allowSyntheticDefaultImports": true,
++    "outDir": "./dist",
++    "rootDir": "./src",
++    "skipLibCheck": true
++  },
++  "include": ["src"]
++}
+diff --git a/scenarios/5-mf-bridge/apps/catalog/webpack.config.js b/scenarios/5-mf-bridge/apps/catalog/webpack.config.js
+new file mode 100644
+index 0000000..61c15c0
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/catalog/webpack.config.js
+@@ -0,0 +1,50 @@
++const HtmlWebpackPlugin = require('html-webpack-plugin');
++const { ModuleFederationPlugin } = require('webpack').container;
++const deps = require('./package.json').dependencies;
++
++module.exports = {
++  entry: './src/index.tsx',
++  resolve: {
++    extensions: ['.tsx', '.ts', '.js'],
++  },
++  module: {
++    rules: [
++      {
++        test: /\.tsx?$/,
++        use: 'ts-loader',
++        exclude: /node_modules/,
++      },
++    ],
++  },
++  plugins: [
++    new ModuleFederationPlugin({
++      name: 'catalog',
++      filename: 'remoteEntry.js',
++      exposes: {
++        // Exposes the mf-bridge entry — shell imports this as catalog/entry
++        './entry': './src/entry',
++      },
++      shared: {
++        react: {
++          singleton: true,
++          requiredVersion: deps.react,
++        },
++        'react-dom': {
++          singleton: true,
++          requiredVersion: deps['react-dom'],
++        },
++      },
++    }),
++    new HtmlWebpackPlugin({
++      template: './public/index.html',
++    }),
++  ],
++  devServer: {
++    port: 3001,
++    historyApiFallback: true,
++  },
++  output: {
++    publicPath: 'http://localhost:3001/',
++    clean: true,
++  },
++};
+diff --git a/scenarios/5-mf-bridge/apps/checkout/package.json b/scenarios/5-mf-bridge/apps/checkout/package.json
+new file mode 100644
+index 0000000..4d0682d
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/package.json
+@@ -0,0 +1,24 @@
++{
++  "name": "checkout",
++  "version": "1.0.0",
++  "private": true,
++  "scripts": {
++    "start": "webpack serve --mode development",
++    "build": "webpack --mode production"
++  },
++  "dependencies": {
++    "@mf-toolkit/mf-bridge": "^1.0.0",
++    "react": "18.3.1",
++    "react-dom": "18.3.1"
++  },
++  "devDependencies": {
++    "@types/react": "^18.2.0",
++    "@types/react-dom": "^18.2.0",
++    "html-webpack-plugin": "^5.6.0",
++    "ts-loader": "^9.5.1",
++    "typescript": "^5.3.3",
++    "webpack": "^5.90.3",
++    "webpack-cli": "^5.1.4",
++    "webpack-dev-server": "^5.0.4"
++  }
++}
+diff --git a/scenarios/5-mf-bridge/apps/checkout/public/index.html b/scenarios/5-mf-bridge/apps/checkout/public/index.html
+new file mode 100644
+index 0000000..d71e17f
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/public/index.html
+@@ -0,0 +1,11 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>Checkout — standalone</title>
++  </head>
++  <body>
++    <div id="root"></div>
++  </body>
++</html>
+diff --git a/scenarios/5-mf-bridge/apps/checkout/shared-config.json b/scenarios/5-mf-bridge/apps/checkout/shared-config.json
+new file mode 100644
+index 0000000..1843090
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/shared-config.json
+@@ -0,0 +1,4 @@
++{
++  "react": { "singleton": true, "requiredVersion": "18.3.1" },
++  "react-dom": { "singleton": true, "requiredVersion": "18.3.1" }
++}
+diff --git a/scenarios/5-mf-bridge/apps/checkout/src/Cart.tsx b/scenarios/5-mf-bridge/apps/checkout/src/Cart.tsx
+new file mode 100644
+index 0000000..03e612b
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/src/Cart.tsx
+@@ -0,0 +1,105 @@
++import React, { useState, useEffect } from 'react';
++import { setCommandHandler, checkoutEmit } from './bridge';
++import type { CartItem } from './types';
++
++function formatPrice(cents: number): string {
++  return `$${(cents / 100).toFixed(2)}`;
++}
++
++export default function Cart() {
++  const [items, setItems] = useState<CartItem[]>([]);
++  const [ordered, setOrdered] = useState(false);
++
++  // Register command handler so the host shell can push addItem / clearCart
++  useEffect(() => {
++    setCommandHandler((cmd) => {
++      if (cmd.type === 'addItem') {
++        const { id, name, price } = cmd.payload;
++        setItems((prev) => {
++          const existing = prev.find((i) => i.id === id);
++          if (existing) {
++            return prev.map((i) =>
++              i.id === id ? { ...i, quantity: i.quantity + 1 } : i
++            );
++          }
++          return [...prev, { id, name, price, quantity: 1 }];
++        });
++      }
++      if (cmd.type === 'clearCart') {
++        setItems([]);
++      }
++    });
++    return () => setCommandHandler(null);
++  }, []);
++
++  const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
++
++  function placeOrder() {
++    // Emit orderPlaced → shell receives and shows a success toast
++    checkoutEmit('orderPlaced', { items, total });
++    setItems([]);
++    setOrdered(true);
++    setTimeout(() => setOrdered(false), 2500);
++  }
++
++  if (ordered) {
++    return (
++      <div style={{ padding: '1rem', color: '#4caf50' }}>
++        <strong>Order placed successfully!</strong>
++      </div>
++    );
++  }
++
++  if (items.length === 0) {
++    return (
++      <div>
++        <h2 style={{ marginTop: 0 }}>Cart</h2>
++        <p style={{ color: '#888' }}>Empty — add products from the catalog.</p>
++      </div>
++    );
++  }
++
++  return (
++    <div>
++      <h2 style={{ marginTop: 0 }}>Cart</h2>
++      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
++        {items.map((item) => (
++          <li
++            key={item.id}
++            style={{
++              display: 'flex',
++              justifyContent: 'space-between',
++              alignItems: 'center',
++              padding: '0.5rem 0',
++              borderBottom: '1px solid #eee',
++            }}
++          >
++            <span>
++              <strong>{item.name}</strong>
++              <span style={{ marginLeft: '0.5rem', color: '#888' }}>×{item.quantity}</span>
++            </span>
++            <span style={{ fontWeight: 600 }}>{formatPrice(item.price * item.quantity)}</span>
++          </li>
++        ))}
++      </ul>
++      <div style={{ marginTop: '1rem', fontWeight: 700 }}>
++        Total: {formatPrice(total)}
++      </div>
++      <button
++        onClick={placeOrder}
++        style={{
++          marginTop: '1rem',
++          padding: '0.5rem 1.25rem',
++          background: '#1976d2',
++          color: '#fff',
++          border: 'none',
++          borderRadius: 4,
++          cursor: 'pointer',
++          fontWeight: 600,
++        }}
++      >
++        Place Order
++      </button>
++    </div>
++  );
++}
+diff --git a/scenarios/5-mf-bridge/apps/checkout/src/bootstrap.tsx b/scenarios/5-mf-bridge/apps/checkout/src/bootstrap.tsx
+new file mode 100644
+index 0000000..e729542
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/src/bootstrap.tsx
+@@ -0,0 +1,11 @@
++import React from 'react';
++import { createRoot } from 'react-dom/client';
++import Cart from './Cart';
++
++// Standalone dev mode — runs without the shell
++const root = createRoot(document.getElementById('root')!);
++root.render(
++  <React.StrictMode>
++    <Cart />
++  </React.StrictMode>
++);
+diff --git a/scenarios/5-mf-bridge/apps/checkout/src/bridge.ts b/scenarios/5-mf-bridge/apps/checkout/src/bridge.ts
+new file mode 100644
+index 0000000..3d09bac
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/src/bridge.ts
+@@ -0,0 +1,28 @@
++import type { CheckoutEvents, CartCommand } from './types';
++
++// ── Emit (checkout → host) ─────────────────────────────────────────────────
++
++let _emit: ((type: string, payload?: unknown) => void) | null = null;
++
++export function setCheckoutEmit(fn: ((type: string, payload?: unknown) => void) | null): void {
++  _emit = fn;
++}
++
++export function checkoutEmit<K extends keyof CheckoutEvents>(
++  type: K,
++  payload: CheckoutEvents[K],
++): void {
++  _emit?.(type, payload);
++}
++
++// ── Command dispatch (host → Cart component) ───────────────────────────────
++
++let _commandHandler: ((cmd: CartCommand) => void) | null = null;
++
++export function setCommandHandler(fn: ((cmd: CartCommand) => void) | null): void {
++  _commandHandler = fn;
++}
++
++export function dispatchCommand(cmd: CartCommand): void {
++  _commandHandler?.(cmd);
++}
+diff --git a/scenarios/5-mf-bridge/apps/checkout/src/entry.ts b/scenarios/5-mf-bridge/apps/checkout/src/entry.ts
+new file mode 100644
+index 0000000..693d8d7
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/src/entry.ts
+@@ -0,0 +1,28 @@
++// Remote entry — exposed via ModuleFederationPlugin as './entry'.
++// The host shell imports this and passes it to MFBridgeLazy as `register`.
++import { createMFEntry } from '@mf-toolkit/mf-bridge/entry';
++import Cart from './Cart';
++import { setCheckoutEmit, dispatchCommand } from './bridge';
++
++export const register = createMFEntry(
++  Cart,
++  // onBeforeMount — wire emit and subscribe to commands from the host
++  ({ emit, onCommand }) => {
++    setCheckoutEmit(emit);
++
++    onCommand((type, payload) => {
++      if (type === 'addItem') {
++        dispatchCommand({
++          type: 'addItem',
++          payload: payload as { id: string; name: string; price: number },
++        });
++      } else if (type === 'clearCart') {
++        dispatchCommand({ type: 'clearCart' });
++      }
++    });
++  },
++  // onBeforeUnmount — detach emit to avoid stale closures
++  () => {
++    setCheckoutEmit(null);
++  },
++);
+diff --git a/scenarios/5-mf-bridge/apps/checkout/src/index.tsx b/scenarios/5-mf-bridge/apps/checkout/src/index.tsx
+new file mode 100644
+index 0000000..b93c7a0
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/src/index.tsx
+@@ -0,0 +1 @@
++import('./bootstrap');
+diff --git a/scenarios/5-mf-bridge/apps/checkout/src/types.ts b/scenarios/5-mf-bridge/apps/checkout/src/types.ts
+new file mode 100644
+index 0000000..1b0670a
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/src/types.ts
+@@ -0,0 +1,15 @@
++export interface CartItem {
++  id: string;
++  name: string;
++  price: number;
++  quantity: number;
++}
++
++export type CheckoutEvents = {
++  orderPlaced: { items: CartItem[]; total: number };
++};
++
++// Commands sent by the shell host to the checkout remote
++export type CartCommand =
++  | { type: 'addItem'; payload: { id: string; name: string; price: number } }
++  | { type: 'clearCart' };
+diff --git a/scenarios/5-mf-bridge/apps/checkout/tsconfig.json b/scenarios/5-mf-bridge/apps/checkout/tsconfig.json
+new file mode 100644
+index 0000000..22fdbf7
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/tsconfig.json
+@@ -0,0 +1,15 @@
++{
++  "compilerOptions": {
++    "target": "ES2020",
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "jsx": "react-jsx",
++    "strict": true,
++    "esModuleInterop": true,
++    "allowSyntheticDefaultImports": true,
++    "outDir": "./dist",
++    "rootDir": "./src",
++    "skipLibCheck": true
++  },
++  "include": ["src"]
++}
+diff --git a/scenarios/5-mf-bridge/apps/checkout/webpack.config.js b/scenarios/5-mf-bridge/apps/checkout/webpack.config.js
+new file mode 100644
+index 0000000..5848bcc
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/checkout/webpack.config.js
+@@ -0,0 +1,50 @@
++const HtmlWebpackPlugin = require('html-webpack-plugin');
++const { ModuleFederationPlugin } = require('webpack').container;
++const deps = require('./package.json').dependencies;
++
++module.exports = {
++  entry: './src/index.tsx',
++  resolve: {
++    extensions: ['.tsx', '.ts', '.js'],
++  },
++  module: {
++    rules: [
++      {
++        test: /\.tsx?$/,
++        use: 'ts-loader',
++        exclude: /node_modules/,
++      },
++    ],
++  },
++  plugins: [
++    new ModuleFederationPlugin({
++      name: 'checkout',
++      filename: 'remoteEntry.js',
++      exposes: {
++        // Exposes the mf-bridge entry — shell imports this as checkout/entry
++        './entry': './src/entry',
++      },
++      shared: {
++        react: {
++          singleton: true,
++          requiredVersion: deps.react,
++        },
++        'react-dom': {
++          singleton: true,
++          requiredVersion: deps['react-dom'],
++        },
++      },
++    }),
++    new HtmlWebpackPlugin({
++      template: './public/index.html',
++    }),
++  ],
++  devServer: {
++    port: 3002,
++    historyApiFallback: true,
++  },
++  output: {
++    publicPath: 'http://localhost:3002/',
++    clean: true,
++  },
++};
+diff --git a/scenarios/5-mf-bridge/apps/shell/package.json b/scenarios/5-mf-bridge/apps/shell/package.json
+new file mode 100644
+index 0000000..ad71167
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/package.json
+@@ -0,0 +1,25 @@
++{
++  "name": "shell",
++  "version": "1.0.0",
++  "private": true,
++  "scripts": {
++    "start": "webpack serve --mode development",
++    "build": "webpack --mode production"
++  },
++  "dependencies": {
++    "@mf-toolkit/mf-bridge": "^1.0.0",
++    "react": "18.3.1",
++    "react-dom": "18.3.1",
++    "zustand": "4.5.2"
++  },
++  "devDependencies": {
++    "@types/react": "^18.2.0",
++    "@types/react-dom": "^18.2.0",
++    "html-webpack-plugin": "^5.6.0",
++    "ts-loader": "^9.5.1",
++    "typescript": "^5.3.3",
++    "webpack": "^5.90.3",
++    "webpack-cli": "^5.1.4",
++    "webpack-dev-server": "^5.0.4"
++  }
++}
+diff --git a/scenarios/5-mf-bridge/apps/shell/public/index.html b/scenarios/5-mf-bridge/apps/shell/public/index.html
+new file mode 100644
+index 0000000..1f3a27e
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/public/index.html
+@@ -0,0 +1,15 @@
++<!DOCTYPE html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <title>MF Storefront — mf-bridge demo</title>
++    <style>
++      * { box-sizing: border-box; }
++      body { margin: 0; font-family: system-ui, sans-serif; }
++    </style>
++  </head>
++  <body>
++    <div id="root"></div>
++  </body>
++</html>
+diff --git a/scenarios/5-mf-bridge/apps/shell/shared-config.json b/scenarios/5-mf-bridge/apps/shell/shared-config.json
+new file mode 100644
+index 0000000..35728d6
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/shared-config.json
+@@ -0,0 +1,5 @@
++{
++  "react":     { "singleton": true, "requiredVersion": "18.3.1", "eager": true },
++  "react-dom": { "singleton": true, "requiredVersion": "18.3.1", "eager": true },
++  "zustand":   { "singleton": true, "requiredVersion": "4.5.2",  "eager": true }
++}
+diff --git a/scenarios/5-mf-bridge/apps/shell/src/App.tsx b/scenarios/5-mf-bridge/apps/shell/src/App.tsx
+new file mode 100644
+index 0000000..d4671fd
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/src/App.tsx
+@@ -0,0 +1,200 @@
++import React, { useRef, useState, useCallback } from 'react';
++import { MFBridgeLazy, type TypedOnEvent } from '@mf-toolkit/mf-bridge';
++import { useAuthStore } from './store/authStore';
++
++// ── Event contracts (shared with remotes via a types package in production) ──
++
++type CatalogEvents = {
++  productSelected: { id: string; name: string; price: number };
++};
++
++type CheckoutEvents = {
++  orderPlaced: { items: Array<{ id: string; name: string; price: number; quantity: number }>; total: number };
++};
++
++// ── Loader refs — defined at module scope so references are stable ──────────
++// MFBridgeLazy uses the function reference as a cache key: a new function
++// reference on every render would trigger a reload. Module scope guarantees
++// a single reference for the entire session.
++
++const loadCatalog = () => import('catalog/entry').then((m) => m.register);
++const loadCheckout = () => import('checkout/entry').then((m) => m.register);
++
++// ── App ──────────────────────────────────────────────────────────────────────
++
++export default function App() {
++  const { user, login, logout } = useAuthStore();
++
++  // commandRef lets the shell send imperative commands to the checkout remote.
++  // Cart.tsx receives them via onCommand inside entry.ts.
++  const checkoutCommandRef = useRef<((type: string, payload?: unknown) => void) | null>(null);
++
++  const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
++
++  function showToast(message: string, color = '#1976d2') {
++    setToast({ message, color });
++    setTimeout(() => setToast(null), 3500);
++  }
++
++  // catalog → shell: product selected → forward to checkout as addItem command
++  const onCatalogEvent = useCallback<TypedOnEvent<CatalogEvents>>((type, payload) => {
++    if (type === 'productSelected') {
++      checkoutCommandRef.current?.('addItem', payload);
++      showToast(`Added "${payload.name}" to cart`);
++    }
++  }, []);
++
++  // checkout → shell: order placed → show success notification
++  const onCheckoutEvent = useCallback<TypedOnEvent<CheckoutEvents>>((type, payload) => {
++    if (type === 'orderPlaced') {
++      const total = `$${(payload.total / 100).toFixed(2)}`;
++      showToast(`Order placed — ${payload.items.length} items, ${total}`, '#4caf50');
++    }
++  }, []);
++
++  // Shell sends clearCart command to checkout remote
++  function handleClearCart() {
++    checkoutCommandRef.current?.('clearCart');
++  }
++
++  return (
++    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
++      {/* ── Nav ─────────────────────────────────────────────────────────── */}
++      <nav
++        style={{
++          padding: '0.75rem 1.5rem',
++          borderBottom: '2px solid #1976d2',
++          display: 'flex',
++          alignItems: 'center',
++          gap: '1.5rem',
++          background: '#fff',
++        }}
++      >
++        <strong style={{ fontSize: '1.1rem', color: '#1976d2' }}>MF Storefront</strong>
++        <span style={{ fontSize: '0.8em', color: '#888', fontFamily: 'monospace' }}>
++          ← powered by @mf-toolkit/mf-bridge
++        </span>
++        <span style={{ marginLeft: 'auto' }}>
++          {user ? (
++            <>
++              {user.name}&nbsp;
++              <button onClick={logout}>Logout</button>
++            </>
++          ) : (
++            <button onClick={() => login({ id: '1', name: 'Demo User' })}>Login</button>
++          )}
++        </span>
++      </nav>
++
++      {/* ── Toast ───────────────────────────────────────────────────────── */}
++      {toast && (
++        <div
++          style={{
++            background: toast.color,
++            color: '#fff',
++            padding: '0.6rem 1.5rem',
++            fontWeight: 500,
++            fontSize: '0.9em',
++            transition: 'opacity 0.3s',
++          }}
++        >
++          {toast.message}
++        </div>
++      )}
++
++      {/* ── Main — side-by-side layout shows event→command round-trip ────── */}
++      <main
++        style={{
++          flex: 1,
++          display: 'grid',
++          gridTemplateColumns: '1fr 1fr',
++          gap: 0,
++          alignItems: 'start',
++        }}
++      >
++        {/* Catalog remote */}
++        <section style={{ padding: '1.25rem', borderRight: '1px solid #eee' }}>
++          <MFBridgeLazy
++            register={loadCatalog}
++            props={{}}
++            fallback={<CatalogSkeleton />}
++            errorFallback={<SlotError label="Catalog" />}
++            onError={(err, retry) => {
++              console.error('[catalog] load failed', err);
++              setTimeout(retry, 2000);
++            }}
++            retryCount={2}
++            retryDelay={500}
++            timeout={5000}
++            onEvent={onCatalogEvent}
++            debug={process.env.NODE_ENV !== 'production'}
++          />
++        </section>
++
++        {/* Checkout remote */}
++        <section style={{ padding: '1.25rem' }}>
++          <MFBridgeLazy
++            register={loadCheckout}
++            props={{}}
++            fallback={<CartSkeleton />}
++            errorFallback={<SlotError label="Cart" />}
++            onError={(err, retry) => {
++              console.error('[checkout] load failed', err);
++              setTimeout(retry, 2000);
++            }}
++            retryCount={2}
++            retryDelay={500}
++            timeout={5000}
++            onEvent={onCheckoutEvent}
++            commandRef={checkoutCommandRef}
++            debug={process.env.NODE_ENV !== 'production'}
++          />
++          <button
++            onClick={handleClearCart}
++            style={{
++              marginTop: '0.75rem',
++              padding: '0.3rem 0.9rem',
++              background: '#f5f5f5',
++              border: '1px solid #ccc',
++              borderRadius: 4,
++              cursor: 'pointer',
++              fontSize: '0.85em',
++            }}
++          >
++            Clear Cart
++          </button>
++        </section>
++      </main>
++    </div>
++  );
++}
++
++// ── Skeletons & error slot ───────────────────────────────────────────────────
++
++function CatalogSkeleton() {
++  return (
++    <div>
++      <div style={{ height: 24, width: 140, background: '#eee', marginBottom: '1rem', borderRadius: 4 }} />
++      {[1, 2, 3, 4, 5, 6].map((i) => (
++        <div key={i} style={{ height: 36, background: '#f5f5f5', marginBottom: 8, borderRadius: 4 }} />
++      ))}
++    </div>
++  );
++}
++
++function CartSkeleton() {
++  return (
++    <div>
++      <div style={{ height: 24, width: 60, background: '#eee', marginBottom: '1rem', borderRadius: 4 }} />
++      <div style={{ height: 80, background: '#f5f5f5', borderRadius: 4 }} />
++    </div>
++  );
++}
++
++function SlotError({ label }: { label: string }) {
++  return (
++    <p style={{ color: '#c62828' }}>
++      {label} is temporarily unavailable. Retrying…
++    </p>
++  );
++}
+diff --git a/scenarios/5-mf-bridge/apps/shell/src/bootstrap.tsx b/scenarios/5-mf-bridge/apps/shell/src/bootstrap.tsx
+new file mode 100644
+index 0000000..c5314ab
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/src/bootstrap.tsx
+@@ -0,0 +1,10 @@
++import React from 'react';
++import { createRoot } from 'react-dom/client';
++import App from './App';
++
++const root = createRoot(document.getElementById('root')!);
++root.render(
++  <React.StrictMode>
++    <App />
++  </React.StrictMode>
++);
+diff --git a/scenarios/5-mf-bridge/apps/shell/src/declarations.d.ts b/scenarios/5-mf-bridge/apps/shell/src/declarations.d.ts
+new file mode 100644
+index 0000000..c3b76eb
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/src/declarations.d.ts
+@@ -0,0 +1,12 @@
++// Type declarations for Module Federation remotes.
++// In production, generate these with @module-federation/typescript or keep manually.
++
++declare module 'catalog/entry' {
++  import type { RegisterFn } from '@mf-toolkit/mf-bridge';
++  export const register: RegisterFn<Record<string, never>>;
++}
++
++declare module 'checkout/entry' {
++  import type { RegisterFn } from '@mf-toolkit/mf-bridge';
++  export const register: RegisterFn<Record<string, never>>;
++}
+diff --git a/scenarios/5-mf-bridge/apps/shell/src/index.tsx b/scenarios/5-mf-bridge/apps/shell/src/index.tsx
+new file mode 100644
+index 0000000..b93c7a0
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/src/index.tsx
+@@ -0,0 +1 @@
++import('./bootstrap');
+diff --git a/scenarios/5-mf-bridge/apps/shell/src/store/authStore.ts b/scenarios/5-mf-bridge/apps/shell/src/store/authStore.ts
+new file mode 100644
+index 0000000..a0b3159
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/src/store/authStore.ts
+@@ -0,0 +1,18 @@
++import { create } from 'zustand';
++
++interface User {
++  id: string;
++  name: string;
++}
++
++interface AuthState {
++  user: User | null;
++  login: (user: User) => void;
++  logout: () => void;
++}
++
++export const useAuthStore = create<AuthState>((set) => ({
++  user: null,
++  login: (user) => set({ user }),
++  logout: () => set({ user: null }),
++}));
+diff --git a/scenarios/5-mf-bridge/apps/shell/tsconfig.json b/scenarios/5-mf-bridge/apps/shell/tsconfig.json
+new file mode 100644
+index 0000000..22fdbf7
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/tsconfig.json
+@@ -0,0 +1,15 @@
++{
++  "compilerOptions": {
++    "target": "ES2020",
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "jsx": "react-jsx",
++    "strict": true,
++    "esModuleInterop": true,
++    "allowSyntheticDefaultImports": true,
++    "outDir": "./dist",
++    "rootDir": "./src",
++    "skipLibCheck": true
++  },
++  "include": ["src"]
++}
+diff --git a/scenarios/5-mf-bridge/apps/shell/webpack.config.js b/scenarios/5-mf-bridge/apps/shell/webpack.config.js
+new file mode 100644
+index 0000000..4d822ce
+--- /dev/null
++++ b/scenarios/5-mf-bridge/apps/shell/webpack.config.js
+@@ -0,0 +1,56 @@
++const HtmlWebpackPlugin = require('html-webpack-plugin');
++const { ModuleFederationPlugin } = require('webpack').container;
++const deps = require('./package.json').dependencies;
++
++module.exports = {
++  entry: './src/index.tsx',
++  resolve: {
++    extensions: ['.tsx', '.ts', '.js'],
++  },
++  module: {
++    rules: [
++      {
++        test: /\.tsx?$/,
++        use: 'ts-loader',
++        exclude: /node_modules/,
++      },
++    ],
++  },
++  plugins: [
++    new ModuleFederationPlugin({
++      name: 'shell',
++      remotes: {
++        catalog: 'catalog@http://localhost:3001/remoteEntry.js',
++        checkout: 'checkout@http://localhost:3002/remoteEntry.js',
++      },
++      shared: {
++        react: {
++          singleton: true,
++          requiredVersion: deps.react,
++          eager: true,
++        },
++        'react-dom': {
++          singleton: true,
++          requiredVersion: deps['react-dom'],
++          eager: true,
++        },
++        zustand: {
++          singleton: true,
++          requiredVersion: deps.zustand,
++          eager: true,
++        },
++      },
++    }),
++    new HtmlWebpackPlugin({
++      template: './public/index.html',
++    }),
++  ],
++  devServer: {
++    port: 3000,
++    historyApiFallback: true,
++  },
++  output: {
++    publicPath: 'http://localhost:3000/',
++    clean: true,
++  },
++};
+-- 
+2.43.0
+
