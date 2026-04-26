@@ -18,7 +18,8 @@ export function shouldFail(report: ProjectReport, failOn: 'mismatch' | 'unused' 
     report.unused.length > 0 ||
     report.candidates.length > 0 ||
     report.singletonRisks.length > 0 ||
-    report.eagerRisks.length > 0
+    report.eagerRisks.length > 0 ||
+    report.deepImportBypass.length > 0
   );
 }
 

@@ -83,12 +83,23 @@ export const SHARE_CANDIDATE_PACKAGES: readonly string[] = [
   '@emotion/styled',
 ];
 
+/**
+ * Subpath specifiers excluded from the deep-import bypass detector by default.
+ * The JSX automatic runtime emits `import { jsx } from 'react/jsx-runtime'` —
+ * this is not a misconfiguration, so it is allowlisted out of the box.
+ */
+export const DEFAULT_DEEP_IMPORT_ALLOWLIST: readonly string[] = [
+  'react/jsx-runtime',
+  'react/jsx-dev-runtime',
+];
+
 // ─── Resolved policy ─────────────────────────────────────────────────────────
 
 export interface ResolvedPolicy {
   alwaysShared: Set<string>;
   singletonRisks: Set<string>;
   shareCandidates: Set<string>;
+  deepImportAllowlist: Set<string>;
 }
 
 /**
@@ -99,6 +110,7 @@ export function mergePolicy(options?: AnalysisOptions): ResolvedPolicy {
   const alwaysShared = new Set<string>(DEFAULT_ALWAYS_SHARED);
   const singletonRisks = new Set<string>(SINGLETON_RISK_PACKAGES);
   const shareCandidates = new Set<string>(SHARE_CANDIDATE_PACKAGES);
+  const deepImportAllowlist = new Set<string>(DEFAULT_DEEP_IMPORT_ALLOWLIST);
 
   if (options?.alwaysShared) {
     for (const pkg of options.alwaysShared) alwaysShared.add(pkg);
@@ -109,6 +121,9 @@ export function mergePolicy(options?: AnalysisOptions): ResolvedPolicy {
   if (options?.additionalCandidates) {
     for (const pkg of options.additionalCandidates) shareCandidates.add(pkg);
   }
+  if (options?.deepImportAllowlist) {
+    for (const spec of options.deepImportAllowlist) deepImportAllowlist.add(spec);
+  }
 
-  return { alwaysShared, singletonRisks, shareCandidates };
+  return { alwaysShared, singletonRisks, shareCandidates, deepImportAllowlist };
 }

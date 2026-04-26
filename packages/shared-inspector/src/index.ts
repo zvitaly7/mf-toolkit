@@ -25,6 +25,7 @@ export type {
   MismatchedEntry,
   SingletonRiskEntry,
   EagerRiskEntry,
+  DeepImportBypassEntry,
   FederationAnalysisOptions,
   FederationReport,
   GhostShareEntry,

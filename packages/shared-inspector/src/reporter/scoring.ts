@@ -18,7 +18,7 @@ export interface RiskScore {
 // ─── Severity mapping ─────────────────────────────────────────────────────────
 //
 // ProjectReport:
-//   HIGH   — mismatched versions         (sharing silently broken, runtime crash)
+//   HIGH   — mismatched versions + deepImportBypass  (sharing silently broken, runtime crash / shared scope bypassed)
 //   MEDIUM — singletonRisks + eagerRisks + candidates  (duplicate instances / bundles)
 //   LOW    — unused                       (dead config, over-sharing)
 //
@@ -36,7 +36,7 @@ const PENALTY: Record<'high' | 'medium' | 'low', number> = {
 // ─── Scorers ─────────────────────────────────────────────────────────────────
 
 export function scoreProjectReport(report: ProjectReport): RiskScore {
-  const high   = report.mismatched.length;
+  const high   = report.mismatched.length + report.deepImportBypass.length;
   const medium = report.singletonRisks.length + report.eagerRisks.length + report.candidates.length;
   const low    = report.unused.length;
   return buildScore(high, medium, low);

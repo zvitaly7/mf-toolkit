@@ -6,7 +6,7 @@ import type { ProjectManifest } from '../src/types.js';
 
 function makeManifest(name: string, shared: Record<string, any>, used: string[]): ProjectManifest {
   return {
-    schemaVersion: 1, generatedAt: new Date().toISOString(),
+    schemaVersion: 2, generatedAt: new Date().toISOString(),
     project: { name, root: '.', kind: 'unknown' },
     source: { depth: 'local-graph', sourceDirs: ['./src'], filesScanned: 5 },
     usage: { directPackages: used, resolvedPackages: used, packageDetails: [] },

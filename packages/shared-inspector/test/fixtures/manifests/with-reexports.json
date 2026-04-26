@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedAt": "2026-01-01T00:00:00.000Z",
   "project": { "name": "mf-checkout", "root": "/projects/mf-checkout", "kind": "remote" },
   "source": {
@@ -11,10 +11,10 @@
     "directPackages": ["react", "axios"],
     "resolvedPackages": ["react", "axios", "mobx", "mobx-react"],
     "packageDetails": [
-      { "package": "react", "importCount": 2, "files": ["src/app.tsx", "src/pages/cart.tsx"], "via": "direct" },
-      { "package": "axios", "importCount": 1, "files": ["src/api/client.ts"], "via": "direct" },
-      { "package": "mobx", "importCount": 1, "files": ["src/shared/index.ts"], "via": "reexport" },
-      { "package": "mobx-react", "importCount": 1, "files": ["src/shared/index.ts"], "via": "reexport" }
+      { "package": "react", "importCount": 2, "files": ["src/app.tsx", "src/pages/cart.tsx"], "via": "direct", "deepImports": [] },
+      { "package": "axios", "importCount": 1, "files": ["src/api/client.ts"], "via": "direct", "deepImports": [] },
+      { "package": "mobx", "importCount": 1, "files": ["src/shared/index.ts"], "via": "reexport", "deepImports": [] },
+      { "package": "mobx-react", "importCount": 1, "files": ["src/shared/index.ts"], "via": "reexport", "deepImports": [] }
     ]
   },
   "shared": {

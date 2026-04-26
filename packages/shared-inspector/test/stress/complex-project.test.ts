@@ -339,8 +339,8 @@ describe('stress: all 4 finding categories at once', () => {
       // resolvedPackages: mobx (candidate) + axios (found but not shared, not a candidate)
       resolvedPackages: ['mobx', 'axios'],
       packageDetails: [
-        { package: 'mobx',  importCount: 5, files: ['src/store.ts'], via: 'direct' },
-        { package: 'axios', importCount: 1, files: ['src/api.ts'],   via: 'direct' },
+        { package: 'mobx',  importCount: 5, files: ['src/store.ts'], via: 'direct', deepImports: [] },
+        { package: 'axios', importCount: 1, files: ['src/api.ts'],   via: 'direct', deepImports: [] },
       ],
       sharedDeclared: {
         // unused: lodash not in resolvedPackages
