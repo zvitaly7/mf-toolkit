@@ -64,6 +64,11 @@ const PACKAGE_DIAGNOSTICS: Record<string, Partial<Record<IssueKind, string>>> = 
     candidate:       'Each MF creates its own store — actions won\'t propagate across MFs',
     'singleton-risk': 'Multiple Redux stores → dispatches won\'t propagate cross-MF',
   },
+  'react-redux': {
+    mismatch:        'react-redux version mismatch → Provider context incompatible, useSelector / useDispatch broken',
+    candidate:       'Each MF bundles its own react-redux — Provider context not shared, hooks return isolated state',
+    'singleton-risk': 'Multiple react-redux instances → useSelector / useDispatch bind to different Providers across MFs',
+  },
   '@reduxjs/toolkit': {
     mismatch:        'RTK version mismatch → createSlice / createAsyncThunk API differences',
     candidate:       'Each MF bundles its own RTK — separate store instances, no shared state',

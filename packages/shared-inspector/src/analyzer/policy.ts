@@ -13,23 +13,38 @@ export const DEFAULT_ALWAYS_SHARED: readonly string[] = [
 
 /**
  * Packages with global state — should be shared with singleton: true.
- * Duplicating these causes runtime errors (e.g. "Invalid hook call").
+ * Duplicating these causes runtime errors (e.g. "Invalid hook call") or
+ * silent state isolation across microfrontends.
  */
 export const SINGLETON_RISK_PACKAGES: readonly string[] = [
+  // Frameworks
   'react',
   'react-dom',
+  'vue',
+  // Routing
   'react-router',
   'react-router-dom',
-  'vue',
   'vue-router',
+  // State — observable / flux
   'mobx',
   'mobx-react',
   'mobx-react-lite',
+  'redux',
+  'react-redux',
+  '@reduxjs/toolkit',
+  // State — hooks-based
+  'zustand',
+  'jotai',
+  'recoil',
+  // Data fetching — client cache instances
+  '@tanstack/react-query',
+  'swr',
+  '@apollo/client',
+  'urql',
+  // Styling — theme context + class-name caches
   'styled-components',
   '@emotion/react',
   '@emotion/styled',
-  'redux',
-  '@reduxjs/toolkit',
 ];
 
 /**
@@ -52,6 +67,7 @@ export const SHARE_CANDIDATE_PACKAGES: readonly string[] = [
   'mobx-react',
   'mobx-react-lite',
   'redux',
+  'react-redux',
   '@reduxjs/toolkit',
   'zustand',
   'jotai',
@@ -59,6 +75,8 @@ export const SHARE_CANDIDATE_PACKAGES: readonly string[] = [
   // Data fetching
   '@tanstack/react-query',
   'swr',
+  '@apollo/client',
+  'urql',
   // Styling
   'styled-components',
   '@emotion/react',
