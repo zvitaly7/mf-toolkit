@@ -11,6 +11,7 @@ function makeReport(overrides: Partial<ProjectReport> = {}): ProjectReport {
     mismatched: [],
     singletonRisks: [],
     eagerRisks: [],
+    deepImportBypass: [],
     summary: {
       totalShared: 0,
       usedShared: 0,
@@ -19,6 +20,7 @@ function makeReport(overrides: Partial<ProjectReport> = {}): ProjectReport {
       mismatchedCount: 0,
       singletonRisksCount: 0,
       eagerRisksCount: 0,
+      deepImportBypassCount: 0,
     },
     ...overrides,
   };
@@ -374,5 +376,71 @@ describe('formatReport — diagnostics integration', () => {
     const output = formatReport(report);
 
     expect(output).toContain('theme');
+  });
+});
+
+// ─── Deep-import bypass section ──────────────────────────────────────────────
+
+describe('formatReport — deep-import bypass', () => {
+  it('renders a Deep Import Bypass card for the package', () => {
+    const report = makeReport({
+      deepImportBypass: [{
+        package: 'lodash',
+        specifiers: ['lodash/cloneDeep', 'lodash/debounce'],
+        fileCount: 2,
+        files: ['src/a.ts', 'src/b.ts'],
+      }],
+      summary: {
+        totalShared: 1, usedShared: 1, unusedCount: 0, candidatesCount: 0,
+        mismatchedCount: 0, singletonRisksCount: 0, eagerRisksCount: 0,
+        deepImportBypassCount: 1,
+      },
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('Deep Import Bypass — lodash');
+    expect(output).toContain('lodash/cloneDeep');
+    expect(output).toContain('lodash/debounce');
+    expect(output).toContain('2 files');
+  });
+
+  it('truncates the specifier list with "+ N more" when > 3', () => {
+    const report = makeReport({
+      deepImportBypass: [{
+        package: 'rxjs',
+        specifiers: ['rxjs/operators', 'rxjs/ajax', 'rxjs/webSocket', 'rxjs/fetch', 'rxjs/testing'],
+        fileCount: 1,
+        files: ['src/a.ts'],
+      }],
+      summary: {
+        totalShared: 1, usedShared: 1, unusedCount: 0, candidatesCount: 0,
+        mismatchedCount: 0, singletonRisksCount: 0, eagerRisksCount: 0,
+        deepImportBypassCount: 1,
+      },
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('Deep Import Bypass — rxjs');
+    expect(output).toContain('rxjs/operators');
+    expect(output).toContain('+2 more');
+  });
+
+  it('uses package-specific risk text for known packages', () => {
+    const report = makeReport({
+      deepImportBypass: [{
+        package: 'lodash',
+        specifiers: ['lodash/cloneDeep'],
+        fileCount: 1,
+        files: ['src/a.ts'],
+      }],
+      summary: {
+        totalShared: 1, usedShared: 1, unusedCount: 0, candidatesCount: 0,
+        mismatchedCount: 0, singletonRisksCount: 0, eagerRisksCount: 0,
+        deepImportBypassCount: 1,
+      },
+    });
+    const output = formatReport(report);
+
+    expect(output).toContain('lodash subpath');
   });
 });

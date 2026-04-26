@@ -10,6 +10,13 @@ export interface SharedDepConfig {
 
 export interface PackageOccurrence {
   package: string;
+  /**
+   * Original module specifier as it appeared in source.
+   * For deep imports this differs from `package`:
+   *   specifier: 'lodash/cloneDeep' → package: 'lodash'.
+   * Used to detect deep-import bypass of MF shared scope.
+   */
+  specifier: string;
   /** File where the package was observed */
   file: string;
   /** 'direct' = explicit import/require; 'reexport' = found via barrel re-export chain */
@@ -62,10 +69,10 @@ export interface CollectorOptions {
   parser?: ParserStrategy;
 }
 
-// ─── ProjectManifest (schemaVersion: 1) ──────────────────────────────────────
+// ─── ProjectManifest (schemaVersion: 2) ──────────────────────────────────────
 
 export interface ProjectManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
 
   project: {
@@ -98,6 +105,14 @@ export interface ProjectManifest {
       importCount: number;
       files: string[];
       via: 'direct' | 'reexport';
+      /**
+       * Distinct subpath specifiers used in source for this package
+       * (e.g. ['lodash/cloneDeep', 'lodash/debounce']).
+       * Empty when all imports use the package root specifier.
+       * Webpack/Rspack MF only matches shared by the declared key — deep
+       * imports listed here bypass shared-scope negotiation at runtime.
+       */
+      deepImports: string[];
     }>;
   };
 
@@ -140,6 +155,13 @@ export interface AnalysisOptions {
    * Additional packages to add to the built-in singleton-risk list.
    */
   additionalSingletonRisks?: string[];
+  /**
+   * Deep-import specifiers to exclude from the deep-import bypass detector.
+   * Use this when a project relies on subpaths handled by the JSX transform
+   * or by an MF setup that explicitly shares specific subpaths.
+   * @default ['react/jsx-runtime', 'react/jsx-dev-runtime']
+   */
+  deepImportAllowlist?: string[];
 }
 
 export interface UnusedEntry {
@@ -171,6 +193,22 @@ export interface EagerRiskEntry {
   package: string;
 }
 
+export interface DeepImportBypassEntry {
+  /** Shared package whose subpaths are imported directly */
+  package: string;
+  /**
+   * Distinct subpath specifiers observed in source code
+   * (e.g. ['lodash/cloneDeep', 'lodash/debounce']).
+   * These bypass the MF shared scope: each MF bundles its own copy of the subpath
+   * even when the root package is shared as singleton.
+   */
+  specifiers: string[];
+  /** Number of unique files containing at least one deep import of this package */
+  fileCount: number;
+  /** Up to a few files where the deep imports occur (for the report) */
+  files: string[];
+}
+
 export interface ProjectReport {
   /** Packages in shared config not observed in resolvedPackages */
   unused: UnusedEntry[];
@@ -182,6 +220,13 @@ export interface ProjectReport {
   singletonRisks: SingletonRiskEntry[];
   /** Packages declared with eager: true but without singleton: true */
   eagerRisks: EagerRiskEntry[];
+  /**
+   * Shared packages where source imports subpaths directly.
+   * Webpack/Rspack MF only routes through shared scope when the import
+   * specifier matches the declared shared key — subpaths bypass it,
+   * making the shared declaration ineffective for those imports.
+   */
+  deepImportBypass: DeepImportBypassEntry[];
   summary: {
     totalShared: number;
     usedShared: number;
@@ -190,6 +235,7 @@ export interface ProjectReport {
     mismatchedCount: number;
     singletonRisksCount: number;
     eagerRisksCount: number;
+    deepImportBypassCount: number;
   };
 }
 

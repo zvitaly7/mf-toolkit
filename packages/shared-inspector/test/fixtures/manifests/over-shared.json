@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedAt": "2026-01-01T00:00:00.000Z",
   "project": { "name": "mf-checkout", "root": "/projects/mf-checkout", "kind": "remote" },
   "source": {
@@ -11,8 +11,8 @@
     "directPackages": ["react", "axios"],
     "resolvedPackages": ["react", "axios"],
     "packageDetails": [
-      { "package": "react", "importCount": 4, "files": ["src/app.tsx", "src/pages/home.tsx", "src/pages/cart.tsx", "src/components/button.tsx"], "via": "direct" },
-      { "package": "axios", "importCount": 2, "files": ["src/api/client.ts", "src/api/orders.ts"], "via": "direct" }
+      { "package": "react", "importCount": 4, "files": ["src/app.tsx", "src/pages/home.tsx", "src/pages/cart.tsx", "src/components/button.tsx"], "via": "direct", "deepImports": [] },
+      { "package": "axios", "importCount": 2, "files": ["src/api/client.ts", "src/api/orders.ts"], "via": "direct", "deepImports": [] }
     ]
   },
   "shared": {

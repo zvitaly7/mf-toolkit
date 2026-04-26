@@ -38,7 +38,7 @@ import { writeManifest } from '../src/reporter/write-report.js';
 
 function makeManifest(name = 'checkout') {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: '2024-01-01T00:00:00.000Z',
     project: { name, root: '/cwd', kind: 'unknown' },
     source: { depth: 'local-graph', sourceDirs: ['./src'], filesScanned: 10 },
@@ -55,10 +55,12 @@ function makeReport(overrides: Partial<ProjectReport> = {}): ProjectReport {
     mismatched: [],
     singletonRisks: [],
     eagerRisks: [],
+    deepImportBypass: [],
     summary: {
       totalShared: 0, usedShared: 0, unusedCount: 0,
       candidatesCount: 0, mismatchedCount: 0,
       singletonRisksCount: 0, eagerRisksCount: 0,
+      deepImportBypassCount: 0,
     },
     ...overrides,
   };

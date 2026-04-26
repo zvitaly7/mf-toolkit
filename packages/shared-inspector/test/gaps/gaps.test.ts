@@ -80,7 +80,7 @@ describe('gap 1: eager risks', () => {
 
   it('eagerRisksCount in summary matches eagerRisks array length', () => {
     const manifest = {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       generatedAt: new Date().toISOString(),
       project: { name: 'test', root: '.', kind: 'unknown' as const },
       source: { depth: 'direct' as const, sourceDirs: [], filesScanned: 0 },
@@ -101,10 +101,11 @@ describe('gap 1: eager risks', () => {
     const report = {
       unused: [], candidates: [], mismatched: [], singletonRisks: [],
       eagerRisks: [{ package: 'react' }],
+      deepImportBypass: [],
       summary: {
         totalShared: 1, usedShared: 0,
         unusedCount: 0, candidatesCount: 0, mismatchedCount: 0,
-        singletonRisksCount: 0, eagerRisksCount: 1,
+        singletonRisksCount: 0, eagerRisksCount: 1, deepImportBypassCount: 0,
       },
     };
     const output = formatReport(report);

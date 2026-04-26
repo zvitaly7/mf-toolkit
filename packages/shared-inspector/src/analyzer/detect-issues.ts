@@ -5,6 +5,7 @@ import type {
   MismatchedEntry,
   SingletonRiskEntry,
   EagerRiskEntry,
+  DeepImportBypassEntry,
 } from '../types.js';
 import type { ResolvedPolicy } from './policy.js';
 
@@ -17,6 +18,7 @@ export interface DetectIssuesInput {
     importCount: number;
     files: string[];
     via: 'direct' | 'reexport';
+    deepImports: string[];
   }>;
   sharedDeclared: Record<string, {
     singleton?: boolean;
@@ -34,7 +36,10 @@ export interface DetectIssuesResult {
   mismatched: MismatchedEntry[];
   singletonRisks: SingletonRiskEntry[];
   eagerRisks: EagerRiskEntry[];
+  deepImportBypass: DeepImportBypassEntry[];
 }
+
+const DEEP_IMPORT_FILES_PREVIEW = 3;
 
 // ─── Core detection ───────────────────────────────────────────────────────────
 
@@ -104,5 +109,27 @@ export function detectIssues(input: DetectIssuesInput): DetectIssuesResult {
     .filter(([_, config]) => config.eager === true && config.singleton !== true)
     .map(([pkg]) => ({ package: pkg }));
 
-  return { unused, candidates, mismatched, singletonRisks, eagerRisks };
+  // Deep-import bypass: a package is declared in shared, but source code imports
+  // its subpaths directly (e.g. shared has "lodash", code imports "lodash/cloneDeep").
+  // Webpack/Rspack MF only routes through shared scope on exact key match — subpaths
+  // bypass the scope and each MF bundles its own copy of the subpath module.
+  const deepImportBypass: DeepImportBypassEntry[] = [];
+  for (const [pkg] of sharedEntries) {
+    const detail = detailsMap.get(pkg);
+    if (!detail || detail.deepImports.length === 0) continue;
+
+    const filtered = detail.deepImports.filter(
+      (spec) => !input.policy.deepImportAllowlist.has(spec),
+    );
+    if (filtered.length === 0) continue;
+
+    deepImportBypass.push({
+      package: pkg,
+      specifiers: filtered,
+      fileCount: detail.files.length,
+      files: detail.files.slice(0, DEEP_IMPORT_FILES_PREVIEW),
+    });
+  }
+
+  return { unused, candidates, mismatched, singletonRisks, eagerRisks, deepImportBypass };
 }

@@ -20,21 +20,23 @@ const HR = '─'.repeat(60);
  *   - Ready-to-paste fix snippet
  *
  * Section order (by severity):
- *   1. Version mismatch  — most dangerous, sharing silently broken
- *   2. Unused shared     — easy wins, safe to remove
- *   3. Candidates        — not shared but should be
- *   4. Singleton risks   — missing singleton: true
- *   5. Eager risks       — eager without singleton
- *   6. Summary line
+ *   1. Version mismatch     — most dangerous, sharing silently broken
+ *   2. Deep-import bypass   — shared declaration ignored at runtime
+ *   3. Unused shared        — easy wins, safe to remove
+ *   4. Candidates           — not shared but should be
+ *   5. Singleton risks      — missing singleton: true
+ *   6. Eager risks          — eager without singleton
+ *   7. Summary line
  */
 export function formatReport(report: ProjectReport, ctx?: FormatReportContext): string {
   const lines: string[] = [];
-  const { unused, candidates, mismatched, singletonRisks, eagerRisks, summary } = report;
+  const { unused, candidates, mismatched, singletonRisks, eagerRisks, deepImportBypass, summary } = report;
 
   lines.push('', buildHeader(ctx), HR, '');
 
   const hasFindings =
     mismatched.length > 0 ||
+    deepImportBypass.length > 0 ||
     unused.length > 0 ||
     candidates.length > 0 ||
     singletonRisks.length > 0 ||
@@ -58,7 +60,22 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     lines.push('');
   }
 
-  // ── 2. Unused shared ──────────────────────────────────────────────────────
+  // ── 2. Deep-import bypass ─────────────────────────────────────────────────
+  for (const d of deepImportBypass) {
+    const { risk } = getDiagnostic(d.package, 'deep-import-bypass');
+    const previewSpecs = d.specifiers.slice(0, 3);
+    const moreSpecs = d.specifiers.length > previewSpecs.length
+      ? ` (+${d.specifiers.length - previewSpecs.length} more)`
+      : '';
+    const filesLabel = d.fileCount === 1 ? '1 file' : `${d.fileCount} files`;
+    lines.push(`⚠  Deep Import Bypass — ${d.package}`);
+    lines.push(`   ${d.specifiers.length} subpath specifier${d.specifiers.length === 1 ? '' : 's'} in ${filesLabel}: ${previewSpecs.join(', ')}${moreSpecs}`);
+    lines.push(`   → Risk: ${risk}`);
+    lines.push(`   💡 Fix: replace subpath imports with root imports — e.g. \`import { cloneDeep } from "${d.package}"\` — or add the subpaths to shared explicitly.`);
+    lines.push('');
+  }
+
+  // ── 3. Unused shared ──────────────────────────────────────────────────────
   for (const u of unused) {
     const { risk } = getDiagnostic(u.package, 'unused');
     const note = u.singleton ? 'shared as singleton' : 'shared without singleton';
@@ -69,7 +86,7 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     lines.push('');
   }
 
-  // ── 3. Candidates ─────────────────────────────────────────────────────────
+  // ── 4. Candidates ─────────────────────────────────────────────────────────
   for (const c of candidates) {
     const { risk } = getDiagnostic(c.package, 'candidate');
     const fileCount = c.files.length;
@@ -84,7 +101,7 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     lines.push('');
   }
 
-  // ── 4. Singleton risks ────────────────────────────────────────────────────
+  // ── 5. Singleton risks ────────────────────────────────────────────────────
   for (const r of singletonRisks) {
     const { risk } = getDiagnostic(r.package, 'singleton-risk');
     lines.push(`⚠  Singleton Risk — ${r.package}`);
@@ -97,7 +114,7 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     lines.push('');
   }
 
-  // ── 5. Eager risks ────────────────────────────────────────────────────────
+  // ── 6. Eager risks ────────────────────────────────────────────────────────
   for (const r of eagerRisks) {
     const { risk } = getDiagnostic(r.package, 'eager-risk');
     lines.push(`⚠  Eager Risk — ${r.package}`);
@@ -110,12 +127,12 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
     lines.push('');
   }
 
-  // ── 6. Score + Summary ───────────────────────────────────────────────────
+  // ── 7. Score + Summary ───────────────────────────────────────────────────
   const score = scoreProjectReport(report);
   lines.push(HR);
   lines.push(formatScoreBlock(
     score,
-    'version mismatch',
+    'version mismatch, deep-import bypass',
     'singleton gaps, duplicate libs',
     'over-sharing',
   ));
@@ -123,7 +140,8 @@ export function formatReport(report: ProjectReport, ctx?: FormatReportContext): 
   lines.push(
     `Total: ${summary.totalShared} shared, ${summary.usedShared} used, ` +
     `${summary.unusedCount} unused, ${summary.candidatesCount} candidates, ` +
-    `${summary.mismatchedCount} mismatch, ${summary.eagerRisksCount} eager risks`,
+    `${summary.mismatchedCount} mismatch, ${summary.deepImportBypassCount} deep-import bypass, ` +
+    `${summary.eagerRisksCount} eager risks`,
   );
   lines.push('');
 

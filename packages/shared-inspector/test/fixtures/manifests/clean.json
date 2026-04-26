@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generatedAt": "2026-01-01T00:00:00.000Z",
   "project": { "name": "mf-clean", "root": "/projects/mf-clean", "kind": "remote" },
   "source": {
@@ -11,8 +11,8 @@
     "directPackages": ["react", "mobx"],
     "resolvedPackages": ["react", "mobx"],
     "packageDetails": [
-      { "package": "react", "importCount": 3, "files": ["src/app.tsx", "src/components/button.tsx", "src/components/input.tsx"], "via": "direct" },
-      { "package": "mobx", "importCount": 2, "files": ["src/store.ts", "src/models/user.ts"], "via": "direct" }
+      { "package": "react", "importCount": 3, "files": ["src/app.tsx", "src/components/button.tsx", "src/components/input.tsx"], "via": "direct", "deepImports": [] },
+      { "package": "mobx", "importCount": 2, "files": ["src/store.ts", "src/models/user.ts"], "via": "direct", "deepImports": [] }
     ]
   },
   "shared": {

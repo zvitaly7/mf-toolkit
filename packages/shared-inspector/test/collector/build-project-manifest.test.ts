@@ -27,7 +27,7 @@ describe('buildProjectManifest — direct mode', () => {
 
     expect(manifest.project.name).toBe('checkout');
     expect(manifest.project.kind).toBe('unknown');
-    expect(manifest.schemaVersion).toBe(1);
+    expect(manifest.schemaVersion).toBe(2);
   });
 
   it('records source depth as direct', async () => {
@@ -153,6 +153,23 @@ describe('buildProjectManifest — direct mode', () => {
 
     const roundtripped = JSON.parse(JSON.stringify(manifest));
     expect(roundtripped).toEqual(manifest);
+  });
+
+  it('aggregates distinct deep-import subpaths per package', async () => {
+    const manifest = await buildProjectManifest({
+      name: 'checkout',
+      sourceDirs: [CHECKOUT_SRC],
+      depth: 'direct',
+      packageJsonPath: CHECKOUT_PKG,
+    });
+
+    const lodash = manifest.usage.packageDetails.find((d) => d.package === 'lodash');
+    expect(lodash).toBeDefined();
+    expect(lodash!.deepImports).toContain('lodash/get');
+
+    const react = manifest.usage.packageDetails.find((d) => d.package === 'react');
+    // Root-only imports: deepImports should be empty
+    expect(react!.deepImports).toEqual([]);
   });
 });
 

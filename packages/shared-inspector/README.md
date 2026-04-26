@@ -12,11 +12,12 @@
 
 ## The problem
 
-Module Federation teams manually manage `shared` config and make three kinds of mistakes:
+Module Federation teams manually manage `shared` config and make four kinds of mistakes:
 
 - **Over-sharing** — packages listed in `shared` that the microfrontend never imports. Creates artificial version coupling between independent teams.
 - **Under-sharing** — packages used by both host and remote but missing from `shared`. Each microfrontend may bundle its own copy (e.g. multiple React instances, each ~130 KB).
 - **Version mismatch** — `requiredVersion` doesn't match the installed version. Module Federation silently falls back to a local bundle. For packages with global state (React, styled-components) this causes "Invalid hook call" in production.
+- **Deep-import bypass** — `shared: { lodash: ... }` is declared, but source code imports `lodash/cloneDeep`. Webpack/Rspack MF only routes through shared scope on exact key match, so the subpath bundles into every MF independently — the shared declaration silently has no effect.
 
 Existing tools (webpack-bundle-analyzer, source-map-explorer) show *what ended up in the bundle*, not *why shared config is suboptimal*. Different questions.
 
@@ -550,6 +551,7 @@ Extends all `buildProjectManifest` options (except `name`, auto-resolved from co
 | Category | Severity | Description |
 |----------|----------|-------------|
 | `mismatched` | 🔴 HIGH | `requiredVersion` doesn't satisfy installed version |
+| `deepImportBypass` | 🔴 HIGH | Shared package imported via subpath (`lodash/cloneDeep`) — bypasses MF shared scope |
 | `singletonRisks` | 🟠 MEDIUM | Global-state packages shared without `singleton: true` |
 | `eagerRisks` | 🟠 MEDIUM | `eager: true` without `singleton: true` |
 | `candidates` | 🟠 MEDIUM | Used packages missing from `shared` (each MF bundles own copy) |
