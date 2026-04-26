@@ -1,0 +1,51 @@
+{
+  "id": "checkout:1.0.0",
+  "name": "checkout",
+  "metaData": {
+    "name": "checkout",
+    "type": "lib",
+    "buildInfo": { "buildVersion": "1.0.0", "buildName": "checkout" },
+    "remoteEntry": { "name": "remoteEntry.js", "path": "", "type": "global" },
+    "publicPath": "auto",
+    "globalName": "checkout",
+    "pluginVersion": "0.6.0"
+  },
+  "shared": [
+    {
+      "id": "checkout:react",
+      "name": "react",
+      "version": "17.0.2",
+      "singleton": true,
+      "requiredVersion": "^17.0.2",
+      "from": "checkout",
+      "deps": [],
+      "assets": { "js": { "async": [], "sync": [] }, "css": { "async": [], "sync": [] } }
+    },
+    {
+      "id": "checkout:react-dom",
+      "name": "react-dom",
+      "version": "17.0.2",
+      "requiredVersion": "^17.0.2",
+      "from": "checkout",
+      "deps": ["react"],
+      "assets": { "js": { "async": [], "sync": [] }, "css": { "async": [], "sync": [] } }
+    },
+    {
+      "id": "checkout:lodash",
+      "name": "lodash",
+      "version": "4.17.21",
+      "from": "checkout",
+      "deps": [],
+      "assets": { "js": { "async": [], "sync": [] }, "css": { "async": [], "sync": [] } }
+    }
+  ],
+  "remotes": [],
+  "exposes": [
+    {
+      "id": "checkout:Checkout",
+      "name": "Checkout",
+      "path": "./Checkout",
+      "assets": { "js": { "async": [], "sync": [] }, "css": { "async": [], "sync": [] } }
+    }
+  ]
+}
