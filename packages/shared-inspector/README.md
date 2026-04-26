@@ -278,6 +278,25 @@ npx @mf-toolkit/shared-inspector federation \
 npx @mf-toolkit/shared-inspector federation checkout.json https://storage.example.com/cart.json
 ```
 
+### Module Federation 2.0 manifests (zero integration)
+
+The `federation` command auto-detects two manifest formats:
+
+1. **Native** `project-manifest.json` written by `MfSharedInspectorPlugin`
+2. **MF 2.0** `mf-manifest.json` emitted natively by `@module-federation/enhanced` (Webpack, **Rspack**, **Vite via `@module-federation/vite`**, Next.js MF)
+
+If your build already runs MF 2.0, no integration is required — federation analysis works directly off the artefacts your build already produces:
+
+```bash
+# Point federation at mf-manifest.json files emitted by the build
+npx @mf-toolkit/shared-inspector federation \
+  https://shell.example.com/mf-manifest.json \
+  https://checkout.example.com/mf-manifest.json \
+  https://cart.example.com/mf-manifest.json
+```
+
+Versions are read from the manifest itself (the post-resolution version the bundler actually shipped), which is strictly more accurate than reading `package.json`.
+
 ### Polyrepo setup
 
 In a polyrepo, each team owns a separate repository. The recommended workflow:

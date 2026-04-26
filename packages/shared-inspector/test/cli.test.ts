@@ -674,6 +674,39 @@ describe('main', () => {
     expect(analyzeFederation).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
+
+  // ── MF 2.0 manifest auto-detection ──────────────────────────────────────────
+
+  it('federation: adapts MF 2.0 manifest before passing to analyzer', async () => {
+    const mf2 = {
+      id: 'shell:1.0.0',
+      name: 'shell',
+      metaData: { name: 'shell', type: 'app' },
+      shared: [
+        { name: 'react', version: '18.2.0', singleton: true, requiredVersion: '^18.2.0', from: 'shell' },
+      ],
+      remotes: [],
+      exposes: [],
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, text: async () => JSON.stringify(mf2),
+    }));
+
+    const code = await main(['federation', 'https://cdn.example.com/mf-manifest.json'], () => {});
+    expect(code).toBe(0);
+
+    // analyzeFederation should be called with our normalized ProjectManifest,
+    // not the raw MF 2.0 shape.
+    const passed = vi.mocked(analyzeFederation).mock.calls.at(-1)?.[0];
+    expect(passed).toBeDefined();
+    expect(passed![0].schemaVersion).toBe(2);
+    expect(passed![0].project.name).toBe('shell');
+    expect(passed![0].project.kind).toBe('host');
+    expect(passed![0].shared.declared.react).toEqual({ singleton: true, requiredVersion: '^18.2.0' });
+    expect(passed![0].versions.installed.react).toBe('18.2.0');
+
+    vi.unstubAllGlobals();
+  });
 });
 
 // ─── runInteractive ───────────────────────────────────────────────────────────

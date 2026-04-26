@@ -1,0 +1,54 @@
+{
+  "id": "shell:1.0.0",
+  "name": "shell",
+  "metaData": {
+    "name": "shell",
+    "type": "app",
+    "buildInfo": { "buildVersion": "1.0.0", "buildName": "shell" },
+    "remoteEntry": { "name": "remoteEntry.js", "path": "", "type": "global" },
+    "publicPath": "auto",
+    "globalName": "shell",
+    "pluginVersion": "0.6.0"
+  },
+  "shared": [
+    {
+      "id": "shell:react",
+      "name": "react",
+      "version": "18.2.0",
+      "singleton": true,
+      "requiredVersion": "^18.2.0",
+      "from": "shell",
+      "deps": [],
+      "assets": { "js": { "async": [], "sync": [] }, "css": { "async": [], "sync": [] } }
+    },
+    {
+      "id": "shell:react-dom",
+      "name": "react-dom",
+      "version": "18.2.0",
+      "singleton": true,
+      "requiredVersion": "^18.2.0",
+      "from": "shell",
+      "deps": ["react"],
+      "assets": { "js": { "async": [], "sync": [] }, "css": { "async": [], "sync": [] } }
+    },
+    {
+      "id": "shell:zustand",
+      "name": "zustand",
+      "version": "4.5.0",
+      "singleton": true,
+      "requiredVersion": "^4.5.0",
+      "from": "shell",
+      "deps": [],
+      "assets": { "js": { "async": [], "sync": [] }, "css": { "async": [], "sync": [] } }
+    }
+  ],
+  "remotes": [
+    {
+      "federationContainerName": "checkout",
+      "moduleName": "Checkout",
+      "alias": "checkout",
+      "entry": "https://example.com/checkout/mf-manifest.json"
+    }
+  ],
+  "exposes": []
+}
