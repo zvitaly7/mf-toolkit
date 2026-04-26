@@ -3,6 +3,14 @@ export { buildProjectManifest } from './collector/build-project-manifest.js';
 export { analyzeProject } from './analyzer/analyze-project.js';
 export { analyzeFederation } from './analyzer/analyze-federation.js';
 
+// ─── MF 2.0 manifest ingestion ───────────────────────────────────────────────
+export {
+  isMf2Manifest,
+  adaptMf2Manifest,
+  type Mf2RawManifest,
+  type Mf2SharedEntry,
+} from './collector/read-mf2-manifest.js';
+
 // ─── Shortcut API ─────────────────────────────────────────────────────────────
 export { inspect } from './inspect.js';
 
@@ -25,6 +33,7 @@ export type {
   MismatchedEntry,
   SingletonRiskEntry,
   EagerRiskEntry,
+  DeepImportBypassEntry,
   FederationAnalysisOptions,
   FederationReport,
   GhostShareEntry,

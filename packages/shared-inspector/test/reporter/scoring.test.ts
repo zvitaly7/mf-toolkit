@@ -11,9 +11,11 @@ function makeProjectReport(overrides: Partial<ProjectReport> = {}): ProjectRepor
     mismatched: [],
     singletonRisks: [],
     eagerRisks: [],
+    deepImportBypass: [],
     summary: {
       totalShared: 0, usedShared: 0, unusedCount: 0,
       candidatesCount: 0, mismatchedCount: 0, singletonRisksCount: 0, eagerRisksCount: 0,
+      deepImportBypassCount: 0,
     },
     ...overrides,
   };
@@ -241,8 +243,8 @@ describe('score integration in formatReport', () => {
   it('formatReport output contains Score line', async () => {
     const { formatReport } = await import('../../src/reporter/format-report.js');
     const report: ProjectReport = {
-      unused: [], candidates: [], mismatched: [], singletonRisks: [], eagerRisks: [],
-      summary: { totalShared: 0, usedShared: 0, unusedCount: 0, candidatesCount: 0, mismatchedCount: 0, singletonRisksCount: 0, eagerRisksCount: 0 },
+      unused: [], candidates: [], mismatched: [], singletonRisks: [], eagerRisks: [], deepImportBypass: [],
+      summary: { totalShared: 0, usedShared: 0, unusedCount: 0, candidatesCount: 0, mismatchedCount: 0, singletonRisksCount: 0, eagerRisksCount: 0, deepImportBypassCount: 0 },
     };
     expect(formatReport(report)).toContain('Score:');
   });
@@ -255,7 +257,8 @@ describe('score integration in formatReport', () => {
       mismatched: [{ package: 'react', configured: '^18.0.0', installed: '17.0.2' }],
       singletonRisks: [],
       eagerRisks: [],
-      summary: { totalShared: 1, usedShared: 0, unusedCount: 0, candidatesCount: 0, mismatchedCount: 1, singletonRisksCount: 0, eagerRisksCount: 0 },
+      deepImportBypass: [],
+      summary: { totalShared: 1, usedShared: 0, unusedCount: 0, candidatesCount: 0, mismatchedCount: 1, singletonRisksCount: 0, eagerRisksCount: 0, deepImportBypassCount: 0 },
     };
     const output = formatReport(report);
     expect(output).toContain('80/100');

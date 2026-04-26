@@ -11,14 +11,14 @@ function makeManifest(
   kind: 'host' | 'remote' | 'unknown' = 'unknown',
 ): ProjectManifest {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     project: { name, root: '.', kind },
     source: { depth: 'local-graph', sourceDirs: ['./src'], filesScanned: 10 },
     usage: {
       directPackages: used,
       resolvedPackages: used,
-      packageDetails: used.map((pkg) => ({ package: pkg, importCount: 1, files: [`src/${pkg}.ts`], via: 'direct' })),
+      packageDetails: used.map((pkg) => ({ package: pkg, importCount: 1, files: [`src/${pkg}.ts`], via: 'direct' as const, deepImports: [] })),
     },
     shared: { declared: shared, source: 'explicit' },
     versions: { declared: {}, installed: {} },

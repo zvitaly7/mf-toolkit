@@ -14,13 +14,14 @@ export function analyzeProject(
 ): ProjectReport {
   const policy = mergePolicy(options);
 
-  const { unused, candidates, mismatched, singletonRisks, eagerRisks } = detectIssues({
-    resolvedPackages: manifest.usage.resolvedPackages,
-    packageDetails: manifest.usage.packageDetails,
-    sharedDeclared: manifest.shared.declared,
-    installedVersions: manifest.versions.installed,
-    policy,
-  });
+  const { unused, candidates, mismatched, singletonRisks, eagerRisks, deepImportBypass } =
+    detectIssues({
+      resolvedPackages: manifest.usage.resolvedPackages,
+      packageDetails: manifest.usage.packageDetails,
+      sharedDeclared: manifest.shared.declared,
+      installedVersions: manifest.versions.installed,
+      policy,
+    });
 
   const totalShared = Object.keys(manifest.shared.declared).length;
   const resolvedSet = new Set(manifest.usage.resolvedPackages);
@@ -34,6 +35,7 @@ export function analyzeProject(
     mismatched,
     singletonRisks,
     eagerRisks,
+    deepImportBypass,
     summary: {
       totalShared,
       usedShared,
@@ -42,6 +44,7 @@ export function analyzeProject(
       mismatchedCount: mismatched.length,
       singletonRisksCount: singletonRisks.length,
       eagerRisksCount: eagerRisks.length,
+      deepImportBypassCount: deepImportBypass.length,
     },
   };
 }

@@ -66,8 +66,11 @@ export async function traverseLocalModules(
     : null;
 
   const visited = new Set<string>();
-  /** package → { files observed in, via: direct | reexport } */
-  const pkgMap = new Map<string, { files: Set<string>; via: 'direct' | 'reexport' }>();
+  /** (package, file) key → set of distinct specifiers + dominant `via` */
+  const occurrences = new Map<
+    string,
+    { package: string; file: string; specifiers: Set<string>; via: 'direct' | 'reexport' }
+  >();
 
   // Phase 2: DFS over in-memory content — no disk I/O during traversal.
   function visit(filePath: string): void {
@@ -103,15 +106,17 @@ export async function traverseLocalModules(
       if (options.workspacePackages?.some((p) => matchesIgnorePattern(pkg, p))) continue;
 
       const via: 'direct' | 'reexport' = decl.kind === 'reexport' ? 'reexport' : 'direct';
-      const existing = pkgMap.get(pkg);
+      const key = `${pkg} ${filePath}`;
+      let entry = occurrences.get(key);
 
-      if (!existing) {
-        pkgMap.set(pkg, { files: new Set([filePath]), via });
-      } else {
-        existing.files.add(filePath);
-        // Direct import takes precedence: once seen as direct, stays direct
-        if (via === 'direct') existing.via = 'direct';
+      if (!entry) {
+        entry = { package: pkg, file: filePath, specifiers: new Set(), via };
+        occurrences.set(key, entry);
+      } else if (via === 'direct') {
+        // Direct import takes precedence over reexport for the same (package, file).
+        entry.via = 'direct';
       }
+      entry.specifiers.add(decl.specifier);
     }
   }
 
@@ -119,10 +124,14 @@ export async function traverseLocalModules(
     visit(file);
   }
 
-  // One PackageOccurrence per (package, file) pair — consistent with collectImports
-  return Array.from(pkgMap.entries()).flatMap(([pkg, { files: fileSet, via }]) =>
-    [...fileSet].map((file) => ({ package: pkg, file, via })),
-  );
+  // One PackageOccurrence per distinct (package, file, specifier) triple.
+  const out: PackageOccurrence[] = [];
+  for (const { package: pkg, file, specifiers, via } of occurrences.values()) {
+    for (const specifier of specifiers) {
+      out.push({ package: pkg, specifier, file, via });
+    }
+  }
+  return out;
 }
 
 // ─── Local file resolver ──────────────────────────────────────────────────────

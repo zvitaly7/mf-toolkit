@@ -49,24 +49,31 @@ export async function buildProjectManifest(
   }
 
   // ── Step 3: aggregate occurrences into packageDetails ────────────────────
-  const byPackage = new Map<string, { files: Set<string>; via: 'direct' | 'reexport' }>();
+  const byPackage = new Map<
+    string,
+    { files: Set<string>; via: 'direct' | 'reexport'; deepImports: Set<string> }
+  >();
   for (const occ of occurrences) {
-    if (!byPackage.has(occ.package)) {
-      byPackage.set(occ.package, { files: new Set([occ.file]), via: occ.via });
-    } else {
-      const entry = byPackage.get(occ.package)!;
-      entry.files.add(occ.file);
-      // Direct import takes precedence over reexport at the manifest level too
-      if (occ.via === 'direct') entry.via = 'direct';
+    let entry = byPackage.get(occ.package);
+    if (!entry) {
+      entry = { files: new Set(), via: occ.via, deepImports: new Set() };
+      byPackage.set(occ.package, entry);
     }
+    entry.files.add(occ.file);
+    // Direct import takes precedence over reexport at the manifest level too
+    if (occ.via === 'direct') entry.via = 'direct';
+    if (occ.specifier !== occ.package) entry.deepImports.add(occ.specifier);
   }
 
-  const packageDetails = Array.from(byPackage.entries()).map(([pkg, { files, via }]) => ({
-    package: pkg,
-    importCount: files.size,
-    files: [...files].sort(),
-    via,
-  }));
+  const packageDetails = Array.from(byPackage.entries()).map(
+    ([pkg, { files, via, deepImports }]) => ({
+      package: pkg,
+      importCount: files.size,
+      files: [...files].sort(),
+      via,
+      deepImports: [...deepImports].sort(),
+    }),
+  );
 
   const directPackages = packageDetails
     .filter((d) => d.via === 'direct')
@@ -83,7 +90,7 @@ export async function buildProjectManifest(
 
   // ── Assemble manifest ─────────────────────────────────────────────────────
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
 
     project: { name, root, kind },

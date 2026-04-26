@@ -87,7 +87,7 @@ describe('detectIssues — candidates', () => {
   it('suggests observed package that is in share-candidates list but not in shared config', () => {
     const result = detectIssues(makeInput({
       resolvedPackages: ['mobx'],
-      packageDetails: [{ package: 'mobx', importCount: 5, files: ['src/store.ts'], via: 'direct' }],
+      packageDetails: [{ package: 'mobx', importCount: 5, files: ['src/store.ts'], via: 'direct', deepImports: [] }],
       sharedDeclared: {},
     }));
 
@@ -118,7 +118,7 @@ describe('detectIssues — candidates', () => {
     const result = detectIssues(makeInput({
       resolvedPackages: ['mobx'],
       packageDetails: [
-        { package: 'mobx', importCount: 3, files: ['src/shared/index.ts'], via: 'reexport' },
+        { package: 'mobx', importCount: 3, files: ['src/shared/index.ts'], via: 'reexport', deepImports: [] },
       ],
       sharedDeclared: {},
     }));
@@ -219,5 +219,97 @@ describe('detectIssues — singletonRisks', () => {
     }));
 
     expect(result.singletonRisks).toContainEqual({ package: 'my-state-lib' });
+  });
+});
+
+// ─── Deep-import bypass ──────────────────────────────────────────────────────
+
+describe('detectIssues — deepImportBypass', () => {
+  it('flags a shared package whose source uses subpath specifiers', () => {
+    const result = detectIssues(makeInput({
+      resolvedPackages: ['lodash'],
+      packageDetails: [{
+        package: 'lodash',
+        importCount: 2,
+        files: ['src/a.ts', 'src/b.ts'],
+        via: 'direct',
+        deepImports: ['lodash/cloneDeep', 'lodash/debounce'],
+      }],
+      sharedDeclared: { lodash: { singleton: true } },
+    }));
+
+    expect(result.deepImportBypass).toHaveLength(1);
+    const entry = result.deepImportBypass[0];
+    expect(entry.package).toBe('lodash');
+    expect(entry.specifiers).toEqual(['lodash/cloneDeep', 'lodash/debounce']);
+    expect(entry.fileCount).toBe(2);
+    expect(entry.files).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('does not flag when shared package only uses root specifier', () => {
+    const result = detectIssues(makeInput({
+      resolvedPackages: ['lodash'],
+      packageDetails: [{
+        package: 'lodash',
+        importCount: 1,
+        files: ['src/a.ts'],
+        via: 'direct',
+        deepImports: [],
+      }],
+      sharedDeclared: { lodash: { singleton: true } },
+    }));
+
+    expect(result.deepImportBypass).toHaveLength(0);
+  });
+
+  it('does not flag deep imports of packages that are not in shared config', () => {
+    const result = detectIssues(makeInput({
+      resolvedPackages: ['lodash'],
+      packageDetails: [{
+        package: 'lodash',
+        importCount: 1,
+        files: ['src/a.ts'],
+        via: 'direct',
+        deepImports: ['lodash/cloneDeep'],
+      }],
+      sharedDeclared: {},
+    }));
+
+    expect(result.deepImportBypass).toHaveLength(0);
+  });
+
+  it('excludes default-allowlisted react/jsx-runtime', () => {
+    const result = detectIssues(makeInput({
+      resolvedPackages: ['react'],
+      packageDetails: [{
+        package: 'react',
+        importCount: 1,
+        files: ['src/app.tsx'],
+        via: 'direct',
+        deepImports: ['react/jsx-runtime'],
+      }],
+      sharedDeclared: { react: { singleton: true } },
+    }));
+
+    expect(result.deepImportBypass).toHaveLength(0);
+  });
+
+  it('respects user-provided deepImportAllowlist additions', () => {
+    const policy = mergePolicy({ deepImportAllowlist: ['lodash/fp'] });
+    const result = detectIssues(makeInput({
+      resolvedPackages: ['lodash'],
+      packageDetails: [{
+        package: 'lodash',
+        importCount: 1,
+        files: ['src/a.ts'],
+        via: 'direct',
+        deepImports: ['lodash/fp', 'lodash/cloneDeep'],
+      }],
+      sharedDeclared: { lodash: {} },
+      policy,
+    }));
+
+    expect(result.deepImportBypass).toHaveLength(1);
+    expect(result.deepImportBypass[0].specifiers).toEqual(['lodash/cloneDeep']);
   });
 });

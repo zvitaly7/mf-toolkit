@@ -13,7 +13,8 @@ export type IssueKind =
   | 'unused'
   | 'candidate'
   | 'singleton-risk'
-  | 'eager-risk';
+  | 'eager-risk'
+  | 'deep-import-bypass';
 
 // ─── Per-package knowledge ────────────────────────────────────────────────────
 
@@ -63,6 +64,11 @@ const PACKAGE_DIAGNOSTICS: Record<string, Partial<Record<IssueKind, string>>> = 
     mismatch:        'Redux version mismatch → dispatch / subscribe API incompatible',
     candidate:       'Each MF creates its own store — actions won\'t propagate across MFs',
     'singleton-risk': 'Multiple Redux stores → dispatches won\'t propagate cross-MF',
+  },
+  'react-redux': {
+    mismatch:        'react-redux version mismatch → Provider context incompatible, useSelector / useDispatch broken',
+    candidate:       'Each MF bundles its own react-redux — Provider context not shared, hooks return isolated state',
+    'singleton-risk': 'Multiple react-redux instances → useSelector / useDispatch bind to different Providers across MFs',
   },
   '@reduxjs/toolkit': {
     mismatch:        'RTK version mismatch → createSlice / createAsyncThunk API differences',
@@ -115,6 +121,26 @@ const PACKAGE_DIAGNOSTICS: Record<string, Partial<Record<IssueKind, string>>> = 
     candidate:       'Each MF has its own SWR cache → duplicate fetches, no deduplication',
     'singleton-risk': 'Multiple SWR instances → cache not shared between MFs',
   },
+  lodash: {
+    'deep-import-bypass':
+      'Each MF bundles its own copy of every lodash subpath — duplicates negate the shared declaration',
+  },
+  rxjs: {
+    'deep-import-bypass':
+      'Subpath imports (rxjs/operators, rxjs/ajax) bypass shared scope — Subscriptions and operators may not interop across MFs',
+  },
+  'date-fns': {
+    'deep-import-bypass':
+      'Each subpath import bundles a separate copy — shared declaration is ignored at runtime',
+  },
+  '@mui/material': {
+    'deep-import-bypass':
+      'Per-component subpath imports bypass shared scope — each MF bundles its own copies, theme context may also desync',
+  },
+  '@mui/icons-material': {
+    'deep-import-bypass':
+      'Icon subpath imports bypass shared scope — every icon gets bundled per MF',
+  },
 };
 
 // ─── Generic fallbacks ────────────────────────────────────────────────────────
@@ -125,6 +151,8 @@ const GENERIC_RISK: Record<IssueKind, string> = {
   candidate:       'Each MF bundles its own copy — larger bundles, possible state desync',
   'singleton-risk': 'Duplicate instances may cause unexpected runtime behavior',
   'eager-risk':    'Eager loading without singleton risks duplicate instances during negotiation',
+  'deep-import-bypass':
+    'Subpath imports bypass MF shared scope — each MF bundles its own copy of the subpath module',
 };
 
 export function getDiagnostic(pkg: string, kind: IssueKind): DiagnosticInfo {

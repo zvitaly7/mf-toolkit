@@ -184,4 +184,16 @@ describe('collectImports — mf-checkout fixture', () => {
     // no @tanstack packages in fixture, but pattern should not crash
     expect(results).toBeDefined();
   });
+
+  it('preserves raw specifier alongside the normalized package name', async () => {
+    const results = await collectImports({ sourceDirs: [CHECKOUT_SRC] });
+    const lodashDeep = results.find((r) => r.specifier === 'lodash/get');
+    expect(lodashDeep).toBeDefined();
+    expect(lodashDeep!.package).toBe('lodash');
+
+    const reactRoot = results.find((r) => r.package === 'react');
+    expect(reactRoot).toBeDefined();
+    // Root imports keep specifier === package
+    expect(reactRoot!.specifier).toBe('react');
+  });
 });

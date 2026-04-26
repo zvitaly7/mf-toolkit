@@ -12,11 +12,12 @@
 
 ## The problem
 
-Module Federation teams manually manage `shared` config and make three kinds of mistakes:
+Module Federation teams manually manage `shared` config and make four kinds of mistakes:
 
 - **Over-sharing** — packages listed in `shared` that the microfrontend never imports. Creates artificial version coupling between independent teams.
 - **Under-sharing** — packages used by both host and remote but missing from `shared`. Each microfrontend may bundle its own copy (e.g. multiple React instances, each ~130 KB).
 - **Version mismatch** — `requiredVersion` doesn't match the installed version. Module Federation silently falls back to a local bundle. For packages with global state (React, styled-components) this causes "Invalid hook call" in production.
+- **Deep-import bypass** — `shared: { lodash: ... }` is declared, but source code imports `lodash/cloneDeep`. Webpack/Rspack MF only routes through shared scope on exact key match, so the subpath bundles into every MF independently — the shared declaration silently has no effect.
 
 Existing tools (webpack-bundle-analyzer, source-map-explorer) show *what ended up in the bundle*, not *why shared config is suboptimal*. Different questions.
 
@@ -32,6 +33,7 @@ Bundle analyzers (webpack-bundle-analyzer, source-map-explorer, stats.json inspe
 | Is a package marked `singleton` in one MF but not another? | ✗ | ✅ |
 | Which packages are declared `shared` but never imported? | ✗ | ✅ |
 | Which used packages are missing from `shared` entirely? | ✗ | ✅ |
+| Is `lodash/cloneDeep` bypassing the `lodash` shared scope? | ✗ | ✅ |
 | Cross-MF version conflicts across teams? | ✗ | ✅ via federation manifests |
 
 In short: bundle analyzers are useful for post-build inspection. `shared-inspector` is focused on the `shared` config itself — catching misconfiguration at build time and explaining what the runtime consequences would be.
@@ -50,11 +52,15 @@ shared: {
 
 // checkout — webpack.config.js
 shared: {
-  react:     { singleton: true, requiredVersion: '^17.0.2' }, // ← stale version
+  react:     { singleton: true, requiredVersion: '^17.0.2' },  // ← stale version
   'react-dom': { singleton: true, requiredVersion: '^17.0.2' },
-  lodash:    {},                                               // ← never imported
+  lodash:    { singleton: true },                              // ← imported only as 'lodash/cloneDeep'
   // zustand: missing — checkout imports it, but it's not in shared
 }
+
+// checkout source code:
+import cloneDeep from 'lodash/cloneDeep';
+import merge from 'lodash/merge';
 ```
 
 Running `npx @mf-toolkit/shared-inspector` in the `checkout` project:
@@ -71,6 +77,11 @@ Running `npx @mf-toolkit/shared-inspector` in the `checkout` project:
      react: { singleton: true, requiredVersion: "^18.2.0" }
    }
 
+⚠  Deep Import Bypass — lodash
+   2 subpath specifiers in 4 files: lodash/cloneDeep, lodash/merge
+   → Risk: Each MF bundles its own copy of every lodash subpath — duplicates negate the shared declaration
+   💡 Fix: replace subpath imports with root imports — e.g. `import { cloneDeep } from "lodash"` — or add the subpaths to shared explicitly.
+
 →  Not Shared — zustand (8 imports in 5 files)
    → Risk: Each MF may get its own store instance — state changes may not propagate across MFs
    💡 Fix:
@@ -78,22 +89,17 @@ Running `npx @mf-toolkit/shared-inspector` in the `checkout` project:
      zustand: { singleton: true }
    }
 
-✗  Unused Shared — lodash
-   0 imports, shared without singleton
-   → Wastes bundle negotiation overhead with no benefit
-   💡 Fix: Remove "lodash" from shared config
-
 ────────────────────────────────────────────────────────────
-Score: 69/100  🟠 RISKY
+Score: 49/100  🟠 RISKY
 ```
 
-**After manually updating the config based on the suggestions above** — `react` version aligned, `zustand` added to `shared`, `lodash` removed:
+**After manually updating the config based on the suggestions above** — `react` version aligned, deep `lodash` imports rewritten to `import { cloneDeep, merge } from 'lodash'`, `zustand` added to `shared`:
 
 ```
 Score: 100/100  ✅ HEALTHY
 ```
 
-The cross-team federation report also clears: `shell` and `checkout` now negotiate a single React instance and a single Zustand store at runtime.
+The cross-team federation report also clears: `shell` and `checkout` now negotiate a single React instance, share lodash for real, and use one Zustand store at runtime.
 
 ## Installation
 
@@ -141,11 +147,11 @@ The tool scans `./src`, reads installed versions from `package.json`, and prints
 Score: 62/100  🟠 RISKY
 
 Issues:
-  🔴  1 high    — version mismatch
+  🔴  1 high    — version mismatch, deep-import bypass
   🟠  1 medium  — singleton gaps, duplicate libs
   🟡  1 low     — over-sharing
 
-Total: 12 shared, 10 used, 1 unused, 1 candidates, 1 mismatch, 0 eager risks
+Total: 12 shared, 10 used, 1 unused, 1 candidates, 1 mismatch, 0 deep-import bypass, 0 eager risks
 ```
 
 Colors are auto-applied in TTY terminals and disabled in CI / piped output (`NO_COLOR` / `TERM=dumb` respected).
@@ -257,66 +263,63 @@ jobs:
 
 ![Federation mode: detects version conflicts across microfrontends before they reach runtime](./assets/federation-mode.jpeg)
 
-Once each MF has emitted its manifest, aggregate them to detect cross-team conflicts: version mismatches, singleton inconsistencies, and shared-config gaps across host and remotes.
+Aggregate one manifest per microfrontend to detect cross-team conflicts: version mismatches, singleton inconsistencies, and shared-config gaps across host and remotes.
 
-Manifests can be local files or HTTP/HTTPS URLs — making federation analysis work across separate repositories without manual file passing.
+The `federation` command accepts two manifest formats and **auto-detects** which is which on each input:
+
+1. **`mf-manifest.json`** — emitted natively by `@module-federation/enhanced` (Webpack, **Rspack**, **Vite via `@module-federation/vite`**, Next.js MF). If your build already runs MF 2.0, **no integration with this tool is required** — versions are read from the manifest itself (the post-resolution version the bundler actually shipped, strictly more accurate than `package.json`).
+2. **`project-manifest.json`** — our own format, written by `MfSharedInspectorPlugin`. Use this when your project is on classic Module Federation 1.0 or you need to record source-code usage facts that MF 2.0 manifests don't carry.
 
 ### CLI
 
+Manifests can be local files or HTTP/HTTPS URLs. Mix freely.
+
 ```bash
+# MF 2.0 builds — point straight at the mf-manifest.json each build emits
+npx @mf-toolkit/shared-inspector federation \
+  https://shell.example.com/mf-manifest.json \
+  https://checkout.example.com/mf-manifest.json \
+  https://cart.example.com/mf-manifest.json
+
 # Local files (monorepo or pre-downloaded)
 npx @mf-toolkit/shared-inspector federation checkout.json catalog.json cart.json
 
-# URLs — fetch manifests directly from remote storage
+# Mix any combination of local paths, URLs, and the two formats
 npx @mf-toolkit/shared-inspector federation \
-  https://storage.example.com/manifests/checkout.json \
-  https://storage.example.com/manifests/cart.json \
-  https://storage.example.com/manifests/catalog.json
-
-# Mix of local files and URLs
-npx @mf-toolkit/shared-inspector federation checkout.json https://storage.example.com/cart.json
+  ./dist/mf-manifest.json \
+  https://manifests.internal/cart/latest.json
 ```
 
 ### Polyrepo setup
 
-In a polyrepo, each team owns a separate repository. The recommended workflow:
+In a polyrepo, each team owns a separate repository. Pick a path based on whether your MFs are on Module Federation 2.0:
 
-**Step 1 — each MF repo publishes its manifest on every build:**
+**MF 2.0 (recommended)** — the build already writes `dist/mf-manifest.json`. Publish it to a shared HTTP storage (S3, CDN, object store) on every release, then run the federation check against the URLs:
 
 ```yaml
-# .github/workflows/build.yml (in each MF repo)
-jobs:
-  build:
-    steps:
-      - run: npm run build        # MfSharedInspectorPlugin writes project-manifest.json
-      - uses: actions/upload-artifact@v4
-        with: { name: manifest-${{ github.event.repository.name }}, path: project-manifest.json }
+# In each MF repo: ship dist/mf-manifest.json to a shared bucket
+- run: aws s3 cp dist/mf-manifest.json s3://manifests/${{ github.event.repository.name }}/latest.json
+
+# In a dedicated check job (separate workflow / repo):
+- run: |
+    npx @mf-toolkit/shared-inspector federation \
+      https://manifests.internal/shell/latest.json \
+      https://manifests.internal/checkout/latest.json \
+      https://manifests.internal/cart/latest.json
 ```
 
-**Step 2 — a dedicated federation-check job downloads all manifests and runs analysis:**
+**Module Federation 1.0 (fallback)** — install `MfSharedInspectorPlugin` so each build writes `project-manifest.json`, then upload as a CI artifact:
 
 ```yaml
-# .github/workflows/federation-check.yml (in a shared/platform repo)
-jobs:
-  federation-check:
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: manifest-checkout, github-token: ${{ secrets.GITHUB_TOKEN }}, repository: org/checkout, run-id: ... }
-      - uses: actions/download-artifact@v4
-        with: { name: manifest-cart, github-token: ${{ secrets.GITHUB_TOKEN }}, repository: org/cart, run-id: ... }
-      - run: |
-          npx @mf-toolkit/shared-inspector federation \
-            manifest-checkout/project-manifest.json \
-            manifest-cart/project-manifest.json
-```
+# build.yml in each MF repo
+- run: npm run build                                     # plugin writes project-manifest.json
+- uses: actions/upload-artifact@v4
+  with: { name: manifest-${{ github.event.repository.name }}, path: project-manifest.json }
 
-Alternatively, upload manifests to a shared HTTP storage (S3, CDN, object store) and use URL inputs directly — no artifact coordination required:
-
-```yaml
-      - run: |
-          npx @mf-toolkit/shared-inspector federation \
-            https://manifests.internal/checkout/latest.json \
-            https://manifests.internal/cart/latest.json
+# federation-check.yml in a platform repo
+- uses: actions/download-artifact@v4
+  with: { name: manifest-checkout, github-token: ${{ secrets.GITHUB_TOKEN }}, repository: org/checkout, run-id: ... }
+- run: npx @mf-toolkit/shared-inspector federation manifest-checkout/project-manifest.json ...
 ```
 
 ### Programmatic
@@ -497,6 +500,7 @@ Each manifest can be a local file path or an `http(s)://` URL. Local paths are r
 | `alwaysShared` | `string[]` | `['react','react-dom']` | Never flag as unused |
 | `additionalCandidates` | `string[]` | `[]` | Extend built-in candidates list |
 | `additionalSingletonRisks` | `string[]` | `[]` | Extend built-in singleton-risk list |
+| `deepImportAllowlist` | `string[]` | `['react/jsx-runtime','react/jsx-dev-runtime']` | Subpath specifiers excluded from the deep-import bypass detector |
 
 ### `scoreProjectReport(report)` / `scoreFederationReport(report)`
 
@@ -550,6 +554,7 @@ Extends all `buildProjectManifest` options (except `name`, auto-resolved from co
 | Category | Severity | Description |
 |----------|----------|-------------|
 | `mismatched` | 🔴 HIGH | `requiredVersion` doesn't satisfy installed version |
+| `deepImportBypass` | 🔴 HIGH | Shared package imported via subpath (`lodash/cloneDeep`) — bypasses MF shared scope |
 | `singletonRisks` | 🟠 MEDIUM | Global-state packages shared without `singleton: true` |
 | `eagerRisks` | 🟠 MEDIUM | `eager: true` without `singleton: true` |
 | `candidates` | 🟠 MEDIUM | Used packages missing from `shared` (each MF bundles own copy) |
@@ -568,10 +573,12 @@ Extends all `buildProjectManifest` options (except `name`, auto-resolved from co
 
 Four steps, no magic:
 
-1. **Scan** — statically extracts import/require statements from source files
+1. **Scan** — statically extracts import/require statements from source files, preserving subpath specifiers (`lodash/cloneDeep`) so deep-import bypass becomes detectable
 2. **Normalize** — reads your declared `shared` config (explicit or auto-extracted from `ModuleFederationPlugin`)
 3. **Resolve** — reads installed versions from `node_modules` to detect `requiredVersion` drift
 4. **Cross-reference** — produces findings, a risk score, and optionally a `project-manifest.json` for federation analysis
+
+For federation analysis the tool also accepts MF 2.0 `mf-manifest.json` directly, so cross-team checks work against build artefacts without integrating any plugin.
 
 No webpack build required. Runs in seconds on the source tree directly.
 

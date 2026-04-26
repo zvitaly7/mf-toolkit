@@ -13,23 +13,38 @@ export const DEFAULT_ALWAYS_SHARED: readonly string[] = [
 
 /**
  * Packages with global state — should be shared with singleton: true.
- * Duplicating these causes runtime errors (e.g. "Invalid hook call").
+ * Duplicating these causes runtime errors (e.g. "Invalid hook call") or
+ * silent state isolation across microfrontends.
  */
 export const SINGLETON_RISK_PACKAGES: readonly string[] = [
+  // Frameworks
   'react',
   'react-dom',
+  'vue',
+  // Routing
   'react-router',
   'react-router-dom',
-  'vue',
   'vue-router',
+  // State — observable / flux
   'mobx',
   'mobx-react',
   'mobx-react-lite',
+  'redux',
+  'react-redux',
+  '@reduxjs/toolkit',
+  // State — hooks-based
+  'zustand',
+  'jotai',
+  'recoil',
+  // Data fetching — client cache instances
+  '@tanstack/react-query',
+  'swr',
+  '@apollo/client',
+  'urql',
+  // Styling — theme context + class-name caches
   'styled-components',
   '@emotion/react',
   '@emotion/styled',
-  'redux',
-  '@reduxjs/toolkit',
 ];
 
 /**
@@ -52,6 +67,7 @@ export const SHARE_CANDIDATE_PACKAGES: readonly string[] = [
   'mobx-react',
   'mobx-react-lite',
   'redux',
+  'react-redux',
   '@reduxjs/toolkit',
   'zustand',
   'jotai',
@@ -59,10 +75,22 @@ export const SHARE_CANDIDATE_PACKAGES: readonly string[] = [
   // Data fetching
   '@tanstack/react-query',
   'swr',
+  '@apollo/client',
+  'urql',
   // Styling
   'styled-components',
   '@emotion/react',
   '@emotion/styled',
+];
+
+/**
+ * Subpath specifiers excluded from the deep-import bypass detector by default.
+ * The JSX automatic runtime emits `import { jsx } from 'react/jsx-runtime'` —
+ * this is not a misconfiguration, so it is allowlisted out of the box.
+ */
+export const DEFAULT_DEEP_IMPORT_ALLOWLIST: readonly string[] = [
+  'react/jsx-runtime',
+  'react/jsx-dev-runtime',
 ];
 
 // ─── Resolved policy ─────────────────────────────────────────────────────────
@@ -71,6 +99,7 @@ export interface ResolvedPolicy {
   alwaysShared: Set<string>;
   singletonRisks: Set<string>;
   shareCandidates: Set<string>;
+  deepImportAllowlist: Set<string>;
 }
 
 /**
@@ -81,6 +110,7 @@ export function mergePolicy(options?: AnalysisOptions): ResolvedPolicy {
   const alwaysShared = new Set<string>(DEFAULT_ALWAYS_SHARED);
   const singletonRisks = new Set<string>(SINGLETON_RISK_PACKAGES);
   const shareCandidates = new Set<string>(SHARE_CANDIDATE_PACKAGES);
+  const deepImportAllowlist = new Set<string>(DEFAULT_DEEP_IMPORT_ALLOWLIST);
 
   if (options?.alwaysShared) {
     for (const pkg of options.alwaysShared) alwaysShared.add(pkg);
@@ -91,6 +121,9 @@ export function mergePolicy(options?: AnalysisOptions): ResolvedPolicy {
   if (options?.additionalCandidates) {
     for (const pkg of options.additionalCandidates) shareCandidates.add(pkg);
   }
+  if (options?.deepImportAllowlist) {
+    for (const spec of options.deepImportAllowlist) deepImportAllowlist.add(spec);
+  }
 
-  return { alwaysShared, singletonRisks, shareCandidates };
+  return { alwaysShared, singletonRisks, shareCandidates, deepImportAllowlist };
 }

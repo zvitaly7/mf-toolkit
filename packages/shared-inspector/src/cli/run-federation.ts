@@ -3,9 +3,10 @@ import { resolve } from 'node:path';
 import { analyzeFederation } from '../analyzer/analyze-federation.js';
 import { formatFederationReport } from '../reporter/format-federation-report.js';
 import { scoreFederationReport } from '../reporter/scoring.js';
+import { isMf2Manifest, adaptMf2Manifest } from '../collector/read-mf2-manifest.js';
 import { createSpinner, createNullSpinner } from './spinner.js';
 import { colorizeReport } from './colorize-report.js';
-import type { FederationReport } from '../types.js';
+import type { FederationReport, ProjectManifest } from '../types.js';
 import type { CliArgs } from './types.js';
 
 function isUrl(source: string): boolean {
@@ -36,7 +37,7 @@ export async function runFederation(
   const spinner = args.json ? createNullSpinner() : createSpinner();
   spinner.start(`Loading ${args.manifestFiles.length} manifest${args.manifestFiles.length > 1 ? 's' : ''}`);
 
-  const manifests = [];
+  const manifests: ProjectManifest[] = [];
   for (const source of args.manifestFiles) {
     let content: string;
     try {
@@ -51,12 +52,21 @@ export async function runFederation(
       }
       return 1;
     }
+    let parsed: unknown;
     try {
-      manifests.push(JSON.parse(content));
+      parsed = JSON.parse(content);
     } catch {
       spinner.stop();
       write(`Error: "${source}" is not valid JSON\n`);
       return 1;
+    }
+    // Auto-detect format: native ProjectManifest (schemaVersion: 2) or MF 2.0
+    // mf-manifest.json. The latter is what `@module-federation/enhanced` emits
+    // — supporting it lets users analyse builds without integrating our plugin.
+    if (isMf2Manifest(parsed)) {
+      manifests.push(adaptMf2Manifest(parsed));
+    } else {
+      manifests.push(parsed as ProjectManifest);
     }
   }
 
