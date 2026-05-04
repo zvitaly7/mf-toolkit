@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react'
 import { DOMEventBus } from '@mf-toolkit/mf-bridge'
+import { emitDev, nextDevtoolsId } from './_devtools.js'
 import type { MFBridgeSSRProps } from './types.js'
 import { safeJsonStringify } from './utils.js'
 
@@ -101,22 +102,35 @@ async function fetchWithRetry(
   url: string, fullUrl: string, timeout: number, opts: FetchOpts,
 ): Promise<string> {
   const { fetchOptions, retryCount = 0, retryDelay = 1000, debug } = opts
+  const fetchId = nextDevtoolsId()
+  emitDev({ kind: 'fetch', id: fetchId, ts: Date.now(), phase: 'start', url, attempt: 0 })
   let lastErr!: Error
   for (let attempt = 0; attempt <= retryCount; attempt++) {
     if (attempt > 0) {
       mfLog(debug, `retrying ${url} (attempt ${attempt}/${retryCount})`)
+      emitDev({ kind: 'fetch', id: fetchId, ts: Date.now(), phase: 'retry', url, attempt })
       await new Promise<void>((r) => setTimeout(r, retryDelay))
     }
     try {
       const res = await fetch(fullUrl, { ...fetchOptions, signal: AbortSignal.timeout(timeout) })
       if (!res.ok) throw new Error(`MFBridgeSSR: ${url} → ${res.status}`)
       mfLog(debug, 'fragment fetched', { url, attempt })
-      return await res.text()
+      const text = await res.text()
+      emitDev({ kind: 'fetch', id: fetchId, ts: Date.now(), phase: 'ok', url, attempt })
+      return text
     } catch (err) {
       lastErr = err as Error
       mfLog(debug, 'fetch attempt failed', { url, attempt, err })
     }
   }
+  emitDev({
+    kind: 'fetch',
+    id: fetchId,
+    ts: Date.now(),
+    phase: 'error',
+    url,
+    error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+  })
   throw lastErr
 }
 
@@ -229,6 +243,7 @@ function UrlMode<P extends object>({
   const initialPropsRef = useRef(props)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const busRef = useRef<DOMEventBus | null>(null)
+  const idRef = useRef<string | null>(null)
   const isFirstPropsEffect = useRef(true)
   const onEventRef = useRef(onEvent); onEventRef.current = onEvent
   const commandRefRef = useRef(commandRef); commandRefRef.current = commandRef
@@ -241,7 +256,23 @@ function UrlMode<P extends object>({
 
   useEffect(() => {
     mfLog(debug, 'url-mode mounted', { url, namespace })
-    return () => { mfLog(debug, 'url-mode unmounted', { url, namespace }) }
+    const id = nextDevtoolsId()
+    idRef.current = id
+    emitDev({
+      kind: 'mount',
+      id,
+      pkg: 'ssr',
+      namespace: namespace ?? '',
+      mode: 'ssr-url',
+      ts: Date.now(),
+      props: initialPropsRef.current,
+      url,
+    })
+    return () => {
+      mfLog(debug, 'url-mode unmounted', { url, namespace })
+      emitDev({ kind: 'unmount', id, ts: Date.now() })
+      idRef.current = null
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -253,11 +284,16 @@ function UrlMode<P extends object>({
     const bus = new DOMEventBus(el, namespace)
     busRef.current = bus
     if (commandRefRef.current) {
-      commandRefRef.current.current = (type, payload) =>
+      commandRefRef.current.current = (type, payload) => {
+        const id = idRef.current
+        if (id) emitDev({ kind: 'event', id, ts: Date.now(), type, payload, direction: 'host->remote' })
         bus.send('command', { type, payload })
+      }
     }
     const unsub = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
       mfLog(debug, 'event received', { type, payload })
+      const id = idRef.current
+      if (id) emitDev({ kind: 'event', id, ts: Date.now(), type, payload, direction: 'remote->host' })
       onEventRef.current?.(type, payload)
     })
     return () => {
@@ -270,6 +306,8 @@ function UrlMode<P extends object>({
   useEffect(() => {
     if (isFirstPropsEffect.current) { isFirstPropsEffect.current = false; return }
     mfLog(debug, 'propsChanged', props)
+    const id = idRef.current
+    if (id) emitDev({ kind: 'props', id, ts: Date.now(), props })
     busRef.current?.send('propsChanged', props)
   }, [props])  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -324,11 +362,31 @@ function getLazy<P extends object>(
 
 function LoaderMode<P extends object>({ loader, props, timeout, debug }: LoaderModeProps<P>): ReactElement {
   const LazyComp = getLazy(loader, timeout)
+  const idRef = useRef<string | null>(null)
   useEffect(() => {
     mfLog(debug, 'loader-mode mounted')
-    return () => { mfLog(debug, 'loader-mode unmounted') }
+    const id = nextDevtoolsId()
+    idRef.current = id
+    emitDev({
+      kind: 'mount',
+      id,
+      pkg: 'ssr',
+      namespace: '',
+      mode: 'ssr-loader',
+      ts: Date.now(),
+      props,
+    })
+    return () => {
+      mfLog(debug, 'loader-mode unmounted')
+      emitDev({ kind: 'unmount', id, ts: Date.now() })
+      idRef.current = null
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  useEffect(() => {
+    const id = idRef.current
+    if (id) emitDev({ kind: 'props', id, ts: Date.now(), props })
+  }, [props])  // eslint-disable-line react-hooks/exhaustive-deps
   return createElement(LazyComp as unknown as ComponentType<object>, props as object)
 }
 

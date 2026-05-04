@@ -129,6 +129,21 @@ import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
 
 ---
 
+### 🛠️ MF DevTools — [@mf-toolkit/mf-devtools](./packages/mf-devtools)
+
+[![chrome](https://img.shields.io/badge/chrome-≥111-4285F4?logo=googlechrome)](https://www.google.com/chrome/)
+<img src="https://img.shields.io/badge/distribution-Chrome_Web_Store-1a1a2e" alt="not on npm" />
+
+**Chrome DevTools extension for inspecting `mf-bridge` and `mf-ssr` at runtime.**
+
+Adds an "MF" panel to Chrome DevTools that lists every mounted microfrontend on the page — namespace, mode (`bridge` / `lazy` / `hydrated` / `ssr-url` / `ssr-loader`), live props snapshot, bidirectional event log, and SSR fetch lifecycle. Driven by a tiny `window.__MF_DEVTOOLS_HOOK__` contract that `mf-bridge` and `mf-ssr` call into; calls are gated behind `process.env.NODE_ENV !== 'production'` so production bundles tree-shake the instrumentation entirely.
+
+> **Not published to npm.** Developer companion shipped via the Chrome Web Store (or loaded unpacked from `dist/` for development).
+
+[![📖 Full docs →](https://img.shields.io/badge/📖_Full_docs_→-blue?style=for-the-badge)](./packages/mf-devtools)
+
+---
+
 ### 🎯 SVG Sprite Optimization — [@mf-toolkit/sprite-plugin](./packages/sprite-plugin)
 
 [![npm version](https://img.shields.io/npm/v/@mf-toolkit/sprite-plugin?color=CB3837&logo=npm)](https://www.npmjs.com/package/@mf-toolkit/sprite-plugin)
