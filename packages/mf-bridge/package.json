@@ -1,6 +1,6 @@
 {
   "name": "@mf-toolkit/mf-bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Mount microfrontend components from any Module Federation remote — lazy loading, prop streaming, bidirectional events, CSS isolation via Shadow DOM, framework-agnostic remote support, and SSR hydration bridge.",
   "author": "Vitaly Zheltko",
   "license": "MIT",

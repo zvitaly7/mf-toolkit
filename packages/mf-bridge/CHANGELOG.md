@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.1] — 2026-05-04
+
+### Fixed
+
+- **`createMFEntry` crashes on ancestor unmount under React StrictMode dev mode.**
+  The inner React root was created on the host's `mountPointer` element, so
+  StrictMode's effect test cycle (`mount → cleanup → mount`) called
+  `createRoot()` twice on the same container and the synchronous `root.unmount()`
+  during the host's commit phase left the host fiber tree out of sync with the
+  DOM. The next ancestor unmount surfaced as
+  `Failed to execute 'removeChild' on 'Node': The node to be removed is not a
+  child of this node.`. Production was unaffected — the bug only reproduced in
+  development.
+
+  The inner root now mounts inside a child `<div style="display:contents">`
+  appended to `mountPointer`, decoupling host React's container from the
+  bridge's. A per-`mountPointer` `WeakMap` with refcount makes synchronous
+  re-`register()` reuse the existing root, and `root.unmount()` is deferred
+  to a microtask (cancelled if refcount climbs back above zero).
+
+  No API changes.
+
+---
+
 ## [1.0.0] — 2026-04-24
 
 First stable release. No breaking API changes — everything from 0.4.0 keeps working.
