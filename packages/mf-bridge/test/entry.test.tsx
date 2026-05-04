@@ -204,7 +204,9 @@ describe('createMFEntry', () => {
       register({ mountPointer: mountPoint, props: {} })
     })
 
-    expect(mountPoint.innerHTML).toBe('')
+    // Error boundary catches the throw and renders null — component DOM is absent.
+    // The internal wrapper <div> may remain; the assertion is that no component output is in mountPoint.
+    expect(mountPoint.textContent).toBe('')
     vi.restoreAllMocks()
   })
 
@@ -223,7 +225,7 @@ describe('createMFEntry', () => {
       register({ mountPointer: mountPoint, props: { count: 1 } })
     })
 
-    expect(mountPoint.innerHTML).toBe('') // crashed → null
+    expect(mountPoint.textContent).toBe('') // crashed → null
 
     shouldThrow = false
     const bus = new DOMEventBus(mountPoint, 'mfbridge')

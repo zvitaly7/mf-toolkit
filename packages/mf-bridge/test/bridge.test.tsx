@@ -1185,6 +1185,50 @@ describe('StrictMode stability', () => {
     expect(statuses.at(-1)).toBe('ready')
     expect(statuses.filter((s) => s === 'ready')).toHaveLength(1)
   })
+
+  it('MFBridge — unmounts cleanly when an ancestor under StrictMode is removed', async () => {
+    // Regression: in dev StrictMode the effect test cycle (mount → cleanup →
+    // mount) used to call createRoot() twice on the same mountPointer. A
+    // subsequent ancestor-driven unmount then surfaced as
+    // "removeChild on a node that is not a child of this node" because the
+    // host React tree and the inner React tree were sharing a DOM container.
+    function Host({ visible }: { visible: boolean }) {
+      return createElement(
+        'section',
+        null,
+        visible
+          ? createElement(MFBridge, { register: labelRegister, props: { text: 'inside' } })
+          : null,
+      )
+    }
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { rerender, unmount } = await act(async () =>
+      render(strict(createElement(Host, { visible: true }))),
+    )
+
+    expect(screen.getByTestId('label').textContent).toBe('inside')
+
+    // Toggling `visible` makes React drop the MFBridge subtree mid-commit.
+    await act(async () => {
+      rerender(strict(createElement(Host, { visible: false })))
+    })
+
+    // Drain the deferred unmount microtask.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByTestId('label')).toBeNull()
+    expect(
+      consoleError.mock.calls.some((args) =>
+        String(args[0]).includes('removeChild') ||
+        String(args[0]).includes('synchronously unmount'),
+      ),
+    ).toBe(false)
+    unmount()
+    consoleError.mockRestore()
+  })
 })
 
 // ─── shadowDom ───────────────────────────────────────────────────────────────

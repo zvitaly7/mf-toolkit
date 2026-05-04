@@ -1,10 +1,31 @@
 import { createElement, Component, type ReactNode } from 'react'
 import type { ComponentProps, ComponentType } from 'react'
-import { createRoot } from 'react-dom/client'
+import { createRoot, type Root } from 'react-dom/client'
 import { DOMEventBus } from './dom-event-bus.js'
 import type { RegisterFn } from './types.js'
 
 export { DOMEventBus } from './dom-event-bus.js'
+
+// Per-mountPointer registry of the inner React root so repeated register()
+// calls on the same host element (e.g. React StrictMode's effect test cycle,
+// or fast remount via route navigation) reuse a single root instead of
+// creating a second one on the same container — which throws "createRoot()
+// on a container that has already been passed to createRoot()" and leaves
+// the host React tree out of sync, surfacing as removeChild errors during
+// the host's commit phase.
+//
+// Refcount tracks live mounts; the actual root.unmount() runs in a
+// microtask, so a synchronous re-mount in the same task (StrictMode test
+// cycle) bumps refcount back above zero and cancels the pending unmount.
+interface MountEntry {
+  root: Root
+  /** The Element/DocumentFragment we passed to createRoot — child <div> when no shadowDom, else the shadowRoot. */
+  container: Element | DocumentFragment
+  /** Owned <div> appended into mountPointer when shadowDom is off; null when shadowDom owns the container. */
+  innerHost: HTMLElement | null
+  refCount: number
+}
+const mountRegistry: WeakMap<Element | DocumentFragment, MountEntry> = new WeakMap()
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
 
@@ -137,9 +158,33 @@ export function createMFEntry<T extends ComponentType<any>>(
     // recovered component can render again after a previous crash.
     let errorKey = 0
 
-    // When a shadow root is provided, mount React inside it for CSS isolation.
-    const reactContainer: Element | DocumentFragment = shadowRoot ?? mountPointer
-    const root = createRoot(reactContainer)
+    // Pick the registry key — shadowRoot when CSS isolation is enabled, the
+    // outer mountPointer otherwise — and reuse an existing root if one is
+    // already attached to it (StrictMode test cycle, fast remount).
+    const registryKey: Element | DocumentFragment = shadowRoot ?? mountPointer
+    let entry = mountRegistry.get(registryKey)
+    if (!entry) {
+      let container: Element | DocumentFragment
+      let innerHost: HTMLElement | null
+      if (shadowRoot) {
+        // Shadow DOM owns the container; render directly into it.
+        container = shadowRoot
+        innerHost = null
+      } else {
+        // Render into a dedicated child <div> instead of mountPointer itself
+        // so the inner React tree and the host's React tree no longer share a
+        // DOM container, decoupling their unmount timing.
+        innerHost = document.createElement('div')
+        // display: contents keeps the wrapper layout-transparent.
+        innerHost.style.display = 'contents'
+        mountPointer.appendChild(innerHost)
+        container = innerHost
+      }
+      entry = { root: createRoot(container), container, innerHost, refCount: 0 }
+      mountRegistry.set(registryKey, entry)
+    }
+    entry.refCount++
+    const root = entry.root
 
     function render(p: ComponentProps<T>): void {
       root.render(
@@ -158,7 +203,24 @@ export function createMFEntry<T extends ComponentType<any>>(
       onBeforeUnmount?.({ mountPointer })
       unsubscribe()
       commandUnsubs.forEach((fn) => fn())
-      root.unmount()
+      const e = entry!
+      e.refCount--
+      // Defer the actual unmount: a synchronous re-register (StrictMode test
+      // cycle) will bump refCount back above zero and cancel this teardown.
+      // Deferring also avoids the "synchronously unmount a root while React
+      // was already rendering" warning when the host's commit phase triggers
+      // this cleanup.
+      queueMicrotask(() => {
+        if (e.refCount > 0) return
+        if (mountRegistry.get(registryKey) !== e) return
+        mountRegistry.delete(registryKey)
+        e.root.unmount()
+        // Detach the wrapper <div> we added (when not using shadowDom).
+        // parentNode may already be null if the host removed mountPointer.
+        if (e.innerHost && e.innerHost.parentNode) {
+          e.innerHost.parentNode.removeChild(e.innerHost)
+        }
+      })
     }
   }
 }
