@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { DOMEventBus } from './dom-event-bus.js'
+import { emitDev, nextDevtoolsId } from './_devtools.js'
 import type { MFLazyProps, MFProps, RegisterFn } from './types.js'
 
 const DEFAULT_NS = 'mfbridge'
@@ -221,6 +222,7 @@ export function MFBridgeHydrated<P extends object>({
 }: MFBridgeHydratedProps<P>): null {
   const busRef = useRef<DOMEventBus | null>(null)
   const isFirstRender = useRef(true)
+  const idRef = useRef<string | null>(null)
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
   const commandRefRef = useRef(commandRef)
@@ -240,13 +242,19 @@ export function MFBridgeHydrated<P extends object>({
     isFirstRender.current = true
     const bus = new DOMEventBus(el, namespace)
     busRef.current = bus
+    const id = nextDevtoolsId()
+    idRef.current = id
+    emitDev({ kind: 'mount', id, pkg: 'bridge', namespace, mode: 'hydrated', ts: Date.now(), props })
 
     if (commandRefRef.current) {
-      commandRefRef.current.current = (type, payload) =>
+      commandRefRef.current.current = (type, payload) => {
+        emitDev({ kind: 'event', id, ts: Date.now(), type, payload, direction: 'host->remote' })
         bus.send('command', { type, payload })
+      }
     }
 
     const unsubEvent = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
+      emitDev({ kind: 'event', id, ts: Date.now(), type, payload, direction: 'remote->host' })
       onEventRef.current?.(type, payload)
     })
 
@@ -254,7 +262,10 @@ export function MFBridgeHydrated<P extends object>({
       unsubEvent()
       busRef.current = null
       if (commandRefRef.current) commandRefRef.current.current = null
+      emitDev({ kind: 'unmount', id, ts: Date.now() })
+      idRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace])
 
   useEffect(() => {
@@ -263,6 +274,7 @@ export function MFBridgeHydrated<P extends object>({
       return
     }
     if (debug) console.debug(`[mf-bridge-hydrated:${namespace}]`, 'propsChanged', props)
+    if (idRef.current) emitDev({ kind: 'props', id: idRef.current, ts: Date.now(), props })
     busRef.current?.send('propsChanged', props)
   }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -413,6 +425,7 @@ export function MFBridge<T extends RegisterFn<any>>({
   const unmountRef = useRef<(() => void) | null>(null)
   const busRef = useRef<DOMEventBus | null>(null)
   const isFirstRender = useRef(true)
+  const idRef = useRef<string | null>(null)
   const debugRef = useRef(debug)
   debugRef.current = debug
   const onEventRef = useRef(onEvent)
@@ -436,14 +449,18 @@ export function MFBridge<T extends RegisterFn<any>>({
     isFirstRender.current = true
     const bus = new DOMEventBus(el, ns)
     busRef.current = bus
+    const id = nextDevtoolsId()
+    idRef.current = id
 
     // Expose the mount-point element to the host.
     if (mountRefRef.current) mountRefRef.current.current = el
 
     // Expose a send function so the host can dispatch commands to the remote.
     if (commandRefRef.current) {
-      commandRefRef.current.current = (type, payload) =>
+      commandRefRef.current.current = (type, payload) => {
+        emitDev({ kind: 'event', id, ts: Date.now(), type, payload, direction: 'host->remote' })
         bus.send('command', { type, payload })
+      }
     }
 
     // Attach a shadow root for CSS isolation when requested.
@@ -459,10 +476,21 @@ export function MFBridge<T extends RegisterFn<any>>({
       : undefined
 
     dbg(ns, debugRef.current, 'mount', { props, shadowDom: shadowDomRef.current })
+    emitDev({
+      kind: 'mount',
+      id,
+      pkg: 'bridge',
+      namespace: ns,
+      mode: 'bridge',
+      ts: Date.now(),
+      props,
+      shadowDom: shadowDomRef.current,
+    })
     unmountRef.current = register({ mountPointer: el, shadowRoot, props, namespace: ns })
 
     // Subscribe to remote-emitted events forwarded by createMFEntry's emit().
     const unsubEvent = bus.on<{ type: string; payload: unknown }>('event', ({ type, payload }) => {
+      emitDev({ kind: 'event', id, ts: Date.now(), type, payload, direction: 'remote->host' })
       onEventRef.current?.(type, payload)
     })
 
@@ -475,6 +503,8 @@ export function MFBridge<T extends RegisterFn<any>>({
       busRef.current = null
       unmountRef.current?.()
       unmountRef.current = null
+      emitDev({ kind: 'unmount', id, ts: Date.now() })
+      idRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [register, ns])
@@ -487,6 +517,7 @@ export function MFBridge<T extends RegisterFn<any>>({
       return
     }
     dbg(ns, debugRef.current, 'propsChanged', props)
+    if (idRef.current) emitDev({ kind: 'props', id: idRef.current, ts: Date.now(), props })
     busRef.current?.send('propsChanged', props)
   }, [props]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -746,6 +777,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
   const [failed, setFailed] = useState(false)
   // Incremented by the user-facing retry callback to trigger a fresh load cycle.
   const [retryKey, setRetryKey] = useState(0)
+  const loadIdRef = useRef<string | null>(null)
 
   // Stable retry callback exposed to onError. Resets state and triggers a
   // fresh load by incrementing retryKey (which is in effect deps).
@@ -785,6 +817,8 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
     setRegisterFn(null)
     setFailed(false)
 
+    const loadId = nextDevtoolsId()
+    loadIdRef.current = loadId
     onStatusChangeRef.current?.('loading')
 
     function handleFailure(err: unknown): void {
@@ -793,6 +827,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
       if (attempt < maxAttempts) {
         const remaining = maxAttempts - attempt
         dbg(ns, debugRef.current, 'load:retry', { attempt, remaining })
+        emitDev({ kind: 'load', id: loadId, ts: Date.now(), phase: 'retry', attempt })
         const delay = retryDelayRef.current
         if (delay > 0) {
           retryTimeoutId = setTimeout(tryLoad, delay)
@@ -802,6 +837,13 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
         }
       } else {
         dbg(ns, debugRef.current, 'load:error', err)
+        emitDev({
+          kind: 'load',
+          id: loadId,
+          ts: Date.now(),
+          phase: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        })
         setFailed(true)
         onStatusChangeRef.current?.('error')
         onErrorRef.current?.(err, retryRef.current)
@@ -812,6 +854,17 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
       attempt++
       let settled = false
       dbg(ns, debugRef.current, 'load:start', ...(attempt > 1 ? [{ attempt }] : []))
+      if (attempt === 1) {
+        emitDev({
+          kind: 'mount',
+          id: loadId,
+          pkg: 'bridge',
+          namespace: ns,
+          mode: 'lazy',
+          ts: Date.now(),
+        })
+      }
+      emitDev({ kind: 'load', id: loadId, ts: Date.now(), phase: 'start', attempt })
 
       // First attempt with no manual retry: use preloaded promise if available.
       // Any other case (auto-retry or manual retry via retryKey): bypass cache.
@@ -847,6 +900,7 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
           settled = true
           if (loadTimeoutId !== null) { clearTimeout(loadTimeoutId); loadTimeoutId = null }
           dbg(ns, debugRef.current, 'load:ok')
+          emitDev({ kind: 'load', id: loadId, ts: Date.now(), phase: 'ok', attempt })
           setRegisterFn(() => fn)
           onStatusChangeRef.current?.('ready')
           onLoadRef.current?.()
@@ -865,6 +919,8 @@ export function MFBridgeLazy<T extends () => Promise<RegisterFn<any>>>({
       cancelled = true
       if (loadTimeoutId !== null) clearTimeout(loadTimeoutId)
       if (retryTimeoutId !== null) clearTimeout(retryTimeoutId)
+      emitDev({ kind: 'unmount', id: loadId, ts: Date.now() })
+      loadIdRef.current = null
     }
   }, [register, retryKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
