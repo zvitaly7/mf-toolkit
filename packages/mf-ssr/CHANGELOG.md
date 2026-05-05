@@ -7,6 +7,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.2] — 2026-05-05
+
+Version bumped to align with [`@mf-toolkit/mf-bridge@1.0.2`](../mf-bridge/CHANGELOG.md);
+no `1.0.1` was published. No API changes.
+
+### Added
+
+- **Dev-only emitter for `@mf-toolkit/mf-devtools`.** The package now calls
+  `window.__MF_DEVTOOLS_HOOK__.emit(...)` at every fragment mount, unmount,
+  propsChanged, host↔remote event, and the full SSR fetch lifecycle
+  (`start` → `retry` → `ok` / `error`) for both URL-mode and loader-mode
+  fragments.
+
+  The emitter is gated behind `process.env.NODE_ENV !== 'production'`, so
+  the entire `_devtools` module is dead-code-eliminated by webpack / Vite /
+  esbuild in production builds. **Zero runtime cost in production**, no new
+  dependencies, no API surface change.
+
+  See [`@mf-toolkit/mf-devtools`](../mf-devtools) for the panel itself.
+
+---
+
 ## [1.0.0] — 2026-04-20
 
 ### Added

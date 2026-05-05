@@ -7,6 +7,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.2] — 2026-05-05
+
+### Added
+
+- **Dev-only emitter for `@mf-toolkit/mf-devtools`.** The package now ships a
+  minimal `_devtools` module that calls `window.__MF_DEVTOOLS_HOOK__.emit(...)`
+  at every mount, unmount, propsChanged, event, command, and lazy-load
+  lifecycle site. The Chrome DevTools extension consumes those events to
+  render an interactive instance/event explorer for development.
+
+  The emitter is gated behind `process.env.NODE_ENV !== 'production'`, so
+  the entire `_devtools` module is dead-code-eliminated by webpack / Vite /
+  esbuild in production builds. **Zero runtime cost in production**, no new
+  dependencies, no API surface change.
+
+  See [`@mf-toolkit/mf-devtools`](../mf-devtools) for the panel itself and
+  the wire protocol.
+
+---
+
 ## [1.0.1] — 2026-05-04
 
 ### Fixed
