@@ -353,6 +353,12 @@ function ListRow({ inst, selected, onSelect, isChild, showNamespace }: ListRowPr
   // user can see at a glance which one is "active right now".
   const flashing = useFlashOnEvent(inst.events.length, inst.events[inst.events.length - 1]?.ts)
 
+  const liveDotClass =
+    inst.status === 'mounted' ? '' :
+    inst.status === 'error' ? 'err' :
+    inst.status === 'unmounted' ? 'gone' :
+    'loading'
+
   return (
     <div
       className={`list-item${selected ? ' selected' : ''}${isChild ? ' child' : ''}${flashing ? ' flash' : ''}`}
@@ -371,16 +377,15 @@ function ListRow({ inst, selected, onSelect, isChild, showNamespace }: ListRowPr
         >
           {inst.mode}
         </span>
-        {inst.status === 'unmounted' && (
-          <span className="badge badge-unmounted" title={STATUS_TOOLTIPS.unmounted}>unmounted</span>
-        )}
-        {inst.status === 'error' && (
-          <span className="badge badge-error" title={STATUS_TOOLTIPS.error}>error</span>
-        )}
         {inst.shadowDom && (
           <span className="badge badge-bridge" title="Rendered inside Shadow DOM (CSS-isolated)">shadow</span>
         )}
         <span title={`Instance id: ${inst.id}`}>{inst.id}</span>
+        <span
+          className={`live-dot ${liveDotClass}`}
+          title={STATUS_TOOLTIPS[inst.status]}
+          aria-label={`status: ${inst.status}`}
+        />
       </div>
       {inst.url && (
         <div className="meta" title={inst.url}>
@@ -450,10 +455,18 @@ function Detail({ inst }: { inst: Instance }): React.JSX.Element {
     for (const e of inst.events) c[e.kind] = (c[e.kind] ?? 0) + 1
     return c
   }, [inst.events])
+  // "All" toggle: enable every kind that's present. If everything is on,
+  // clicking again clears (acts like deselect-all).
+  const allOn = ALL_KINDS.every((k) => kindCounts[k] === undefined || enabledKinds.has(k))
+  const toggleAll = () => {
+    setEnabledKinds(allOn ? new Set() : new Set(ALL_KINDS))
+  }
   return (
     <>
       <h2>
+        <span>Selected instance</span>
         <span
+          className="selected-id"
           title={
             isAutoNamespace(inst.namespace)
               ? AUTO_NS_TOOLTIP
@@ -462,39 +475,60 @@ function Detail({ inst }: { inst: Instance }): React.JSX.Element {
                 : 'No namespace prop — internal id used'
           }
         >
-          {inst.namespace || '(no namespace)'}
+          {inst.id}
         </span>
+        <small>· {inst.namespace || '(no namespace)'}</small>
         {isAutoNamespace(inst.namespace) && (
-          <span className="ns-auto" title={AUTO_NS_TOOLTIP}> (auto)</span>
+          <small className="ns-auto" title={AUTO_NS_TOOLTIP}>(auto)</small>
         )}
-        {' '}
-        <span
-          className={`badge badge-${inst.mode === 'fetch' ? 'ssr-url' : inst.mode}`}
-          title={MODE_TOOLTIPS[inst.mode] ?? inst.mode}
-          style={{ marginLeft: 4, verticalAlign: 'middle' }}
-        >
-          {inst.mode}
-        </span>
-        <small style={{ color: '#888', fontWeight: 400, marginLeft: 8 }}>· {inst.id}</small>
-        <small className="lifetime" title="Time since mount, or total lifetime if unmounted">
-          {lifetime}
-        </small>
       </h2>
-      <h3 title="Snapshot of the instance — what mode it is, current status, mount/unmount timestamps, optional URL (for SSR), and Shadow DOM flag.">Info</h3>
-      <pre>{JSON.stringify({
-        pkg: inst.pkg,
-        mode: inst.mode,
-        status: inst.status,
-        url: inst.url,
-        shadowDom: inst.shadowDom,
-        mountedAt: new Date(inst.mountedAt).toISOString(),
-        unmountedAt: inst.unmountedAt ? new Date(inst.unmountedAt).toISOString() : undefined,
-      }, null, 2)}</pre>
+
+      <div className="info-chips">
+        <span
+          className={`info-chip chip-mode chip-mode-${inst.mode === 'fetch' ? 'ssr-url' : inst.mode}`}
+          title={MODE_TOOLTIPS[inst.mode] ?? inst.mode}
+        >
+          mode: <strong>{inst.mode}</strong>
+        </span>
+        <span
+          className={`info-chip chip-status chip-status-${inst.status}`}
+          title={STATUS_TOOLTIPS[inst.status]}
+        >
+          status: <strong>{inst.status}</strong>
+        </span>
+        <span
+          className="info-chip chip-lifetime"
+          title="Time since mount, or total lifetime if unmounted"
+        >
+          lifetime: <strong>{lifetime}</strong>
+        </span>
+        {inst.shadowDom && (
+          <span className="info-chip" title="Rendered inside Shadow DOM">shadow</span>
+        )}
+        {inst.url && (
+          <span className="info-chip" title={inst.url}>
+            url: <strong>{truncate(inst.url, 30)}</strong>
+          </span>
+        )}
+      </div>
+
       {inst.lastProps !== undefined && (
-        <>
-          <h3 title="The most recent props the host passed to the remote — either at mount or via a propsChanged update.">Last props</h3>
-          <pre>{safeStringify(inst.lastProps)}</pre>
-        </>
+        <div className="props-row">
+          <div>
+            <h3 title="The most recent props the host passed to the remote — either at mount or via a propsChanged update.">Last props (snapshot)</h3>
+            <pre className="json"><JsonHighlight value={inst.lastProps} /></pre>
+          </div>
+          {(() => {
+            const lastDiff = findLastPropsDiff(inst.events)
+            if (!lastDiff || lastDiff.length === 0) return null
+            return (
+              <div>
+                <h3 title="What changed in the most recent props update versus the previous snapshot.">Diff</h3>
+                <pre className="props-diff-block"><PropsDiffBlock parts={lastDiff} /></pre>
+              </div>
+            )
+          })()}
+        </div>
       )}
       <h3>
         Event log ({filteredEvents.length}
@@ -515,6 +549,10 @@ function Detail({ inst }: { inst: Instance }): React.JSX.Element {
           className="event-filter"
           title="Toggle event kinds in the log below. Useful for high-traffic instances — for example, hide `props` to focus on bus events."
         >
+          <label className={`chip${allOn ? ' on' : ''}`} title="Toggle every kind at once.">
+            <input type="checkbox" checked={allOn} onChange={toggleAll} />
+            All
+          </label>
           {ALL_KINDS.filter((k) => kindCounts[k] > 0).map((k) => (
             <label
               key={k}
@@ -623,10 +661,11 @@ function EventRow({
   }
   return (
     <div className="event-row">
+      <span className={`kind-dot k-${ev.kind}`} aria-hidden />
       <span className="ts" title={`Captured at ${new Date(ev.ts).toISOString()}`}>{dt}</span>
       <span className="kind" title={KIND_TOOLTIPS[ev.kind]}>{ev.kind}</span>
-      <span></span>
-      <span className={cls}>{summary}</span>
+      <span className={`summary ${cls}`}>{summary}</span>
+      <span className="source" title={`Instance: ${ev.id}`}>{ev.id}</span>
     </div>
   )
 }
@@ -683,6 +722,58 @@ function structuralEqual(a: unknown, b: unknown): boolean {
   try { return JSON.stringify(a) === JSON.stringify(b) } catch { return false }
 }
 
+/** Finds the diff for the most recent `props` event, against whatever
+ *  came before. Returns null when there's no props event to show. */
+function findLastPropsDiff(events: MFEvent[]): DiffPart[] | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].kind === 'props') {
+      const prev = findPrevProps(events, i)
+      if (prev === undefined) return null
+      return diffProps(prev, (events[i] as Extract<MFEvent, { kind: 'props' }>).props)
+    }
+  }
+  return null
+}
+
+/** Renders a multi-line unified-style diff (each change becomes a − line
+ *  and a + line) for use inside the side-by-side Diff panel of Detail. */
+function PropsDiffBlock({ parts }: { parts: DiffPart[] }): React.JSX.Element {
+  return (
+    <span className="props-diff">
+      {parts.map((p, i) => {
+        if (p.op === 'add') {
+          return (
+            <span key={i} className="diff-add" title={DIFF_OP_TOOLTIPS.add}>
+              <span className="diff-op">+</span> {`"${p.key}"`}: {summarizeValue(p.value)}
+              {'\n'}
+            </span>
+          )
+        }
+        if (p.op === 'remove') {
+          return (
+            <span key={i} className="diff-remove" title={DIFF_OP_TOOLTIPS.remove}>
+              <span className="diff-op">−</span> {`"${p.key}"`}: {summarizeValue(p.value)}
+              {'\n'}
+            </span>
+          )
+        }
+        return (
+          <span key={i} title={DIFF_OP_TOOLTIPS.change}>
+            <span className="diff-remove">
+              <span className="diff-op">−</span> {`"${p.key}"`}: {summarizeValue(p.from)}
+              {'\n'}
+            </span>
+            <span className="diff-add">
+              <span className="diff-op">+</span> {`"${p.key}"`}: {summarizeValue(p.to)}
+              {'\n'}
+            </span>
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
 function PropsDiff({ parts }: { parts: DiffPart[] }): React.JSX.Element {
   return (
     <span className="props-diff">
@@ -725,6 +816,41 @@ function summarizeValue(v: unknown): string {
 
 function safeStringify(v: unknown): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
+}
+
+/**
+ * Syntax-highlighted JSON renderer for the Last props block. Tokenises a
+ * JSON.stringify output via a single regex pass and wraps each value type
+ * (key / string / number / literal) in a span with a CSS class.
+ */
+function JsonHighlight({ value }: { value: unknown }): React.JSX.Element {
+  const json = safeStringify(value)
+  const re = /("(?:\\.|[^"\\])*")(\s*:)?|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(json)) !== null) {
+    if (m.index > lastIndex) parts.push(json.slice(lastIndex, m.index))
+    if (m[1] !== undefined) {
+      // String literal — distinguish keys (followed by colon) from values.
+      const isKey = m[2] !== undefined
+      parts.push(
+        <span key={key++} className={isKey ? 'json-key' : 'json-str'}>
+          {m[1]}
+        </span>,
+      )
+      if (isKey && m[2] !== undefined) parts.push(m[2])
+    } else if (m[3] !== undefined) {
+      const cls = m[3] === 'null' ? 'json-null' : 'json-bool'
+      parts.push(<span key={key++} className={cls}>{m[3]}</span>)
+    } else if (m[4] !== undefined) {
+      parts.push(<span key={key++} className="json-num">{m[4]}</span>)
+    }
+    lastIndex = re.lastIndex
+  }
+  if (lastIndex < json.length) parts.push(json.slice(lastIndex))
+  return <>{parts}</>
 }
 
 function truncate(s: string, n: number): string {
