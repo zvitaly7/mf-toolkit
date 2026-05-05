@@ -80,7 +80,7 @@ The `?` button in the toolbar opens a cheat-sheet popover with the full legend �
 
 ## How it works
 
-![How it works: page-world hook → ISOLATED-world content bridge → background service worker → React panel; emitDev sites are dead-code-eliminated in production builds](./assets/mf-devtools-how-it-works.png)
+![How it works: page-world hook → ISOLATED-world content bridge → background service worker → React panel; emitDev sites are dead-code-eliminated in production builds](./assets/mfdevtools-how-it-works.png)
 
 1. The extension's MAIN-world content script runs at `document_start` and installs `window.__MF_DEVTOOLS_HOOK__` **before** the user's bundle loads.
 2. `mf-bridge` / `mf-ssr` call `emitDev(event)` at every relevant site — mount, unmount, propsChanged, event, command, load, fetch. The call is gated behind `process.env.NODE_ENV !== 'production'`, so the entire `_devtools.ts` module is dead-code-eliminated from production bundles.
