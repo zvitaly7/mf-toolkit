@@ -30,20 +30,7 @@ Webpack stats and `console.log` don't answer these. React DevTools sees the host
 
 A purpose-built DevTools panel that subscribes to the same dev-only emitter that `mf-bridge` and `mf-ssr` already use, and renders it as a normalized model of every live (and recently unmounted) microfrontend instance.
 
-```
-┌─────────────────────────────┬──────────────────────────────────────┐
-│  Instances (grouped by      │  Selected instance                   │
-│  bus namespace)             │  ─────────────────                   │
-│                             │  Info     mode, status, mount time…  │
-│  • mfbridge-2 (auto)        │  Last props (snapshot)               │
-│    ├─ LAZY      bridge-2    │  Event log                           │
-│    └─ BRIDGE    bridge-4    │    +  0ms  mount   bridge mount …    │
-│  • checkout                 │    + 32ms  load    load:start (1)    │
-│    ├─ FETCH     ssr-3       │    + 84ms  load    load:ok (1)       │
-│    └─ SSR-URL   ssr-5       │    +120ms  props   ~ items: [3]→[2]  │
-│                             │    +250ms  event   ← host orderPlaced│
-└─────────────────────────────┴──────────────────────────────────────┘
-```
+![Two-pane layout: instances grouped by bus namespace on the left (LAZY+BRIDGE for mf-bridge, FETCH+SSR-URL for mf-ssr), selected instance on the right with info, last props snapshot, and a chronological event log](./assets/solution.png)
 
 For every instance the panel captures:
 
@@ -93,21 +80,7 @@ The `?` button in the toolbar opens a cheat-sheet popover with the full legend �
 
 ## How it works
 
-```
-       page world                ISOLATED world             extension          devtools
-┌──────────────────────┐       ┌────────────────┐       ┌──────────────┐    ┌──────────┐
-│ window.              │ post  │ content-       │ chrome│  background  │port│  panel   │
-│ __MF_DEVTOOLS_HOOK__ │ ─────►│   bridge.ts    │ ─────►│   (service   │───►│  (React) │
-│  installed at        │Message│  buffers events│runtime│    worker)   │    │ reducer  │
-│  document_start      │       │                │       │              │    │          │
-└──────────────────────┘       └────────────────┘       └──────────────┘    └──────────┘
-       ▲
-       │ emitDev(event)        ◄── dead-code-eliminated in production builds
-┌──────┴───────────────┐
-│ @mf-toolkit/mf-bridge│
-│ @mf-toolkit/mf-ssr   │
-└──────────────────────┘
-```
+![How it works: page-world hook → ISOLATED-world content bridge → background service worker → React panel; emitDev sites are dead-code-eliminated in production builds](./assets/mf-devtools-how-it-works.png)
 
 1. The extension's MAIN-world content script runs at `document_start` and installs `window.__MF_DEVTOOLS_HOOK__` **before** the user's bundle loads.
 2. `mf-bridge` / `mf-ssr` call `emitDev(event)` at every relevant site — mount, unmount, propsChanged, event, command, load, fetch. The call is gated behind `process.env.NODE_ENV !== 'production'`, so the entire `_devtools.ts` module is dead-code-eliminated from production bundles.
