@@ -56,6 +56,21 @@ html, body, #root {
   .toolbar button { background: #3a3a3a; color: #eee; border-color: #555; }
 }
 
+.toolbar .toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+  cursor: pointer;
+  color: #444;
+}
+
+.toolbar .toggle input { margin: 0; cursor: pointer; }
+
+@media (prefers-color-scheme: dark) {
+  .toolbar .toggle { color: #ccc; }
+}
+
 .toolbar .status {
   margin-left: auto;
   color: #666;
@@ -63,6 +78,288 @@ html, body, #root {
 
 @media (prefers-color-scheme: dark) {
   .toolbar .status { color: #999; }
+}
+
+.list .empty code {
+  background: rgba(0,0,0,0.05);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+.ns-auto {
+  font-weight: normal;
+  color: #999;
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ns-auto { color: #888; }
+}
+
+/* Brief flash on a list row when its instance receives a new event. */
+@keyframes mf-flash {
+  0%   { background: #fff7c2; }
+  100% { background: transparent; }
+}
+@keyframes mf-flash-dark {
+  0%   { background: #4a4326; }
+  100% { background: transparent; }
+}
+.list-item.flash { animation: mf-flash 600ms ease-out; }
+
+@media (prefers-color-scheme: dark) {
+  .list-item.flash { animation: mf-flash-dark 600ms ease-out; }
+}
+
+.lifetime {
+  margin-left: 8px;
+  color: #888;
+  font-weight: normal;
+  font-size: 0.85em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .lifetime { color: #aaa; }
+}
+
+.event-breakdown {
+  font-weight: normal;
+  color: #777;
+}
+
+@media (prefers-color-scheme: dark) {
+  .event-breakdown { color: #aaa; }
+}
+
+/* Filter chips above the event log. */
+.event-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 8px 0;
+}
+
+.event-filter .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  background: #f6f6f6;
+  color: #888;
+}
+
+.event-filter .chip.on {
+  background: #e1ebff;
+  color: #1a4080;
+  border-color: #a8c3ff;
+}
+
+.event-filter .chip input { display: none; }
+
+.event-filter .chip-count {
+  color: #aaa;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-filter .chip.on .chip-count { color: #1a4080; }
+
+@media (prefers-color-scheme: dark) {
+  .event-filter .chip { background: #2a2a2a; color: #888; border-color: #444; }
+  .event-filter .chip.on { background: #2a3447; color: #b6cdf2; border-color: #4a5e8a; }
+  .event-filter .chip-count { color: #666; }
+  .event-filter .chip.on .chip-count { color: #b6cdf2; }
+}
+
+/* Props diff summary inside the events log. */
+.props-diff {
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.props-diff .diff-op {
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.props-diff .diff-add  .diff-op { color: #1d7f1d; }
+.props-diff .diff-remove .diff-op { color: #b13030; }
+.props-diff .diff-change .diff-op { color: #5e6cb1; }
+
+@media (prefers-color-scheme: dark) {
+  .props-diff .diff-add  .diff-op { color: #6fdd6f; }
+  .props-diff .diff-remove .diff-op { color: #ff8a8a; }
+  .props-diff .diff-change .diff-op { color: #a4afe2; }
+}
+
+.props-noop {
+  color: #aa8;
+  font-style: italic;
+}
+
+.props-noop code {
+  font-style: normal;
+}
+
+@media (prefers-color-scheme: dark) {
+  .props-noop { color: #c8c08a; }
+}
+
+/* Help (?) button in toolbar + popover. */
+.help-btn {
+  width: 22px; height: 22px;
+  margin-left: 4px;
+  border: 1px solid #ccc;
+  background: #fff;
+  border-radius: 50%;
+  font-weight: bold;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .help-btn { background: #3a3a3a; color: #eee; border-color: #555; }
+}
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px;
+  z-index: 100;
+}
+
+.help-popover {
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  max-width: 520px;
+  width: 100%;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 0 18px 18px 18px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.help-popover h3 { margin: 0; padding: 4px 0; text-transform: none; color: inherit; font-size: 15px; }
+.help-popover h4 { margin: 14px 0 4px 0; font-size: 12px; }
+.help-popover p { margin: 4px 0 8px 0; }
+.help-popover code { background: rgba(0,0,0,0.06); padding: 0 4px; border-radius: 3px; font-family: 'SFMono-Regular', Menlo, Consolas, monospace; }
+
+@media (prefers-color-scheme: dark) {
+  .help-popover { background: #2a2a2a; color: #e8e8e8; }
+  .help-popover code { background: rgba(255,255,255,0.08); }
+}
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  background: inherit;
+  padding-top: 14px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .help-head { border-color: #3a3a3a; }
+}
+
+.help-head .close-btn {
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+  padding: 0 6px;
+}
+
+.help-popover .legend {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 10px;
+  margin: 4px 0 8px 0;
+}
+.help-popover .legend dt { margin: 0; }
+.help-popover .legend dd { margin: 0; }
+
+/* Connection state dot in the toolbar. */
+.conn-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.conn-connected    { background: #2ca22c; }
+.conn-reconnecting { background: #d9a531; animation: conn-pulse 1s ease-in-out infinite; }
+.conn-disconnected { background: #b83232; }
+
+@keyframes conn-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .list .empty code { background: rgba(255,255,255,0.08); }
+}
+
+/* Namespace group — visually link instances that share a bus channel
+   (e.g. an outer MFBridgeLazy and the inner MFBridge it spawns). */
+.list .group {
+  border-bottom: 1px solid #ddd;
+}
+
+@media (prefers-color-scheme: dark) {
+  .list .group { border-color: #3a3a3a; }
+}
+
+.list .group .list-item {
+  border-bottom: none;
+}
+
+.list-item.child {
+  padding-left: 26px;
+  position: relative;
+  background: rgba(0,0,0,0.015);
+}
+
+.list-item.child::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #ccd;
+}
+
+@media (prefers-color-scheme: dark) {
+  .list-item.child { background: rgba(255,255,255,0.02); }
+  .list-item.child::before { background: #445; }
 }
 
 .list {
