@@ -1,24 +1,56 @@
 import { useEffect, useMemo, useReducer, useState } from 'react'
 import { initialModel, reduce, reduceMany, clearModel, type Instance, type Model } from './state.js'
-import type { MFEvent, RuntimeMessage } from '../shared/protocol.js'
+import { AuditTab } from './audit/AuditTab.js'
+import type { FederationRemoteHint, MFEvent, RuntimeMessage } from '../shared/protocol.js'
+
+type Tab = 'instances' | 'audit'
+
+interface AppState {
+  model: Model
+  /** Most recent federation snapshot received from the page world. */
+  hints: FederationRemoteHint[]
+}
 
 type Action =
   | { type: 'events'; events: MFEvent[] }
   | { type: 'clear' }
 
-function modelReducer(state: Model, action: Action): Model {
+function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'events':
-      return reduceMany(state, action.events)
+    case 'events': {
+      let model = state.model
+      let hints = state.hints
+      for (const ev of action.events) {
+        if (ev.kind === 'federation') {
+          hints = mergeHints(hints, ev.remotes)
+        } else {
+          model = reduce(model, ev)
+        }
+      }
+      return { model, hints }
+    }
     case 'clear':
-      return clearModel()
+      return { model: clearModel(), hints: state.hints }
   }
 }
 
+/** Merge new hints into the existing list, deduplicated by name+remoteEntry. */
+function mergeHints(existing: FederationRemoteHint[], next: FederationRemoteHint[]): FederationRemoteHint[] {
+  if (next.length === 0) return existing
+  const key = (h: FederationRemoteHint): string => `${h.name ?? ''}|${h.remoteEntry ?? ''}`
+  const map = new Map<string, FederationRemoteHint>()
+  for (const h of existing) map.set(key(h), h)
+  for (const h of next) map.set(key(h), { ...map.get(key(h)), ...h })
+  return [...map.values()]
+}
+
+const initialAppState: AppState = { model: initialModel, hints: [] }
+
 export function App(): React.JSX.Element {
-  const [model, dispatch] = useReducer(modelReducer, initialModel)
+  const [state, dispatch] = useReducer(appReducer, initialAppState)
   const [selected, setSelected] = useState<string | null>(null)
   const [paused, setPaused] = useState(false)
+  const [tab, setTab] = useState<Tab>('instances')
   const pausedRef = useBufferedPause(paused, dispatch)
 
   // Wire up the long-lived port to the background service worker once per panel.
@@ -53,25 +85,77 @@ export function App(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const items = useMemo(() => model.order.map((id) => model.byId[id]).filter(Boolean), [model])
-  const selectedInstance = selected ? model.byId[selected] : null
+  const items = useMemo(
+    () => state.model.order.map((id) => state.model.byId[id]).filter(Boolean),
+    [state.model],
+  )
+  const selectedInstance = selected ? state.model.byId[selected] : null
 
   return (
-    <div className="layout">
-      <div className="toolbar">
+    <div className="layout-with-tabs">
+      <div className="tabs">
         <button
-          onClick={() => {
+          className={`tab${tab === 'instances' ? ' active' : ''}`}
+          onClick={() => setTab('instances')}
+        >
+          Instances
+          {items.length > 0 && <span className="tab-count">{items.length}</span>}
+        </button>
+        <button
+          className={`tab${tab === 'audit' ? ' active' : ''}`}
+          onClick={() => setTab('audit')}
+        >
+          Shared Audit
+          {state.hints.length > 0 && <span className="tab-count">{state.hints.length}</span>}
+        </button>
+      </div>
+
+      {tab === 'instances' ? (
+        <InstancesView
+          items={items}
+          selected={selected}
+          setSelected={setSelected}
+          selectedInstance={selectedInstance}
+          paused={paused}
+          setPaused={setPaused}
+          onClear={() => {
             dispatch({ type: 'clear' })
             setSelected(null)
             const tabId = chrome.devtools.inspectedWindow.tabId
             void chrome.tabs.sendMessage(tabId, { type: 'mf-clear', tabId }).catch(() => {})
           }}
-        >
-          Clear
-        </button>
-        <button onClick={() => setPaused((p) => !p)}>
-          {paused ? 'Resume' : 'Pause'}
-        </button>
+        />
+      ) : (
+        <AuditTab federationHints={state.hints} />
+      )}
+    </div>
+  )
+}
+
+interface InstancesViewProps {
+  items: Instance[]
+  selected: string | null
+  setSelected: (id: string) => void
+  selectedInstance: Instance | null
+  paused: boolean
+  setPaused: React.Dispatch<React.SetStateAction<boolean>>
+  onClear: () => void
+}
+
+function InstancesView({
+  items,
+  selected,
+  setSelected,
+  selectedInstance,
+  paused,
+  setPaused,
+  onClear,
+}: InstancesViewProps): React.JSX.Element {
+  return (
+    <div className="layout">
+      <div className="toolbar">
+        <button onClick={onClear}>Clear</button>
+        <button onClick={() => setPaused((p) => !p)}>{paused ? 'Resume' : 'Pause'}</button>
         <span className="status">
           {items.length} {items.length === 1 ? 'instance' : 'instances'}
         </span>
@@ -207,6 +291,9 @@ function EventRow({ ev, t0 }: { ev: MFEvent; t0: number }): React.JSX.Element {
           {ev.error ? ` — ${ev.error}` : ''}
         </span>
       )
+      break
+    case 'federation':
+      summary = <span>federation snapshot ({ev.remotes.length} remotes)</span>
       break
   }
   return (

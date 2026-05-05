@@ -11,6 +11,9 @@
     "dev": "vite build --watch --mode development",
     "lint": "tsc -b"
   },
+  "dependencies": {
+    "@mf-toolkit/shared-inspector": "*"
+  },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.32",
     "@types/chrome": "^0.0.287",
