@@ -56,6 +56,16 @@ function ensureInstance(model: Model, id: string, seed: Partial<Instance>): Inst
 }
 
 function appendEvent(inst: Instance, event: MFEvent): void {
+  // Dedupe identical events. The panel may receive the same event twice when
+  // it reconnects after the service worker died: content-bridge replays its
+  // buffer via mf-panel-ready, and some of those entries were already
+  // delivered through the live port. Two events with the same kind+ts on the
+  // same instance are guaranteed to be the same event because the emitter
+  // uses Date.now() millisecond timestamps and never bursts duplicates.
+  for (let i = inst.events.length - 1; i >= 0 && i >= inst.events.length - 32; i--) {
+    const e = inst.events[i]
+    if (e.kind === event.kind && e.ts === event.ts) return
+  }
   inst.events.push(event)
   if (inst.events.length > MAX_EVENTS_PER_INSTANCE) {
     inst.events.splice(0, inst.events.length - MAX_EVENTS_PER_INSTANCE)

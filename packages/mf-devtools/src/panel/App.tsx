@@ -21,10 +21,17 @@ export function App(): React.JSX.Element {
   const [paused, setPaused] = useState(false)
   const pausedRef = useBufferedPause(paused, dispatch)
 
-  // Wire up the long-lived port to the background service worker once per panel.
+  // Wire up the long-lived port to the background service worker. MV3 service
+  // workers can be evicted after ~30s of inactivity even with a port open; in
+  // that case the port disconnects and any subsequent events from the page
+  // are dropped on the floor. Reconnect on disconnect with a small delay, and
+  // re-pull the content-bridge buffer so we don't miss anything that arrived
+  // while the worker was down. The reducer dedupes identical events.
   useEffect(() => {
     const tabId = chrome.devtools.inspectedWindow.tabId
-    const port = chrome.runtime.connect({ name: `mf-devtools:${tabId}` })
+    let port: chrome.runtime.Port | null = null
+    let cancelled = false
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
     const onMessage = (msg: RuntimeMessage): void => {
       if (msg.type !== 'mf-events') return
@@ -34,21 +41,39 @@ export function App(): React.JSX.Element {
       }
       dispatch({ type: 'events', events: msg.events })
     }
-    port.onMessage.addListener(onMessage)
 
-    // Pull whatever the content script buffered before we connected.
-    void chrome.tabs.sendMessage<RuntimeMessage, { events?: MFEvent[] }>(
-      tabId,
-      { type: 'mf-panel-ready', tabId },
-    ).then((res) => {
-      if (res?.events?.length) dispatch({ type: 'events', events: res.events })
-    }).catch(() => {
-      // No content script on this tab (chrome:// page, no permissions, etc.).
-    })
+    const pullBuffered = (): void => {
+      void chrome.tabs.sendMessage<RuntimeMessage, { events?: MFEvent[] }>(
+        tabId,
+        { type: 'mf-panel-ready', tabId },
+      ).then((res) => {
+        if (cancelled) return
+        if (res?.events?.length) dispatch({ type: 'events', events: res.events })
+      }).catch(() => {
+        // No content script on this tab (chrome:// page, no permissions, etc.).
+      })
+    }
+
+    const connect = (): void => {
+      if (cancelled) return
+      port = chrome.runtime.connect({ name: `mf-devtools:${tabId}` })
+      port.onMessage.addListener(onMessage)
+      port.onDisconnect.addListener(() => {
+        port = null
+        if (cancelled) return
+        // Worker likely went idle. Reconnect after a short backoff; the
+        // service worker will respawn on the new connect call.
+        reconnectTimer = setTimeout(connect, 500)
+      })
+      pullBuffered()
+    }
+
+    connect()
 
     return () => {
-      port.onMessage.removeListener(onMessage)
-      port.disconnect()
+      cancelled = true
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer)
+      port?.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
