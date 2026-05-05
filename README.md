@@ -134,6 +134,8 @@ import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
 [![chrome](https://img.shields.io/badge/chrome-≥111-4285F4?logo=googlechrome)](https://www.google.com/chrome/)
 <img src="https://img.shields.io/badge/distribution-Chrome_Web_Store-1a1a2e" alt="not on npm" />
 
+![mf-devtools: instances grouped by namespace, side-by-side props snapshot and diff, bidirectional event log with filter chips and source ids, lifetime tracking](./packages/mf-devtools/assets/demo.png)
+
 **Chrome DevTools extension for inspecting `mf-bridge` and `mf-ssr` at runtime.**
 
 Adds an "MF" panel to Chrome DevTools that lists every mounted microfrontend on the page — namespace, mode (`bridge` / `lazy` / `hydrated` / `ssr-url` / `ssr-loader`), live props snapshot, bidirectional event log, and SSR fetch lifecycle. Driven by a tiny `window.__MF_DEVTOOLS_HOOK__` contract that `mf-bridge` and `mf-ssr` call into; calls are gated behind `process.env.NODE_ENV !== 'production'` so production bundles tree-shake the instrumentation entirely.
