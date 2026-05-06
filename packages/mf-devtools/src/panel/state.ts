@@ -187,6 +187,11 @@ export function reduce(model: Model, event: MFEvent): Model {
       }
       return upsert(model, event.id, updated, !existing)
     }
+
+    case 'federation':
+      // Federation snapshots are panel-level (App state's `hints`), not
+      // bound to any individual instance. Ignore them in the model reducer.
+      return model
   }
 }
 

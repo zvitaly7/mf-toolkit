@@ -1,19 +1,50 @@
 import { useEffect, useMemo, useReducer, useState } from 'react'
-import { initialModel, reduce, reduceMany, clearModel, type Instance, type Model } from './state.js'
-import type { MFEvent, RuntimeMessage } from '../shared/protocol.js'
+import { initialModel, reduce, clearModel, type Instance, type Model } from './state.js'
+import { AuditTab } from './audit/AuditTab.js'
+import type { FederationRemoteHint, MFEvent, RuntimeMessage } from '../shared/protocol.js'
+
+type Tab = 'instances' | 'audit'
+
+interface AppState {
+  model: Model
+  /** Most recent federation snapshot received from the page world. */
+  hints: FederationRemoteHint[]
+}
 
 type Action =
   | { type: 'events'; events: MFEvent[] }
   | { type: 'clear' }
 
-function modelReducer(state: Model, action: Action): Model {
+function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'events':
-      return reduceMany(state, action.events)
+    case 'events': {
+      let model = state.model
+      let hints = state.hints
+      for (const ev of action.events) {
+        if (ev.kind === 'federation') {
+          hints = mergeHints(hints, ev.remotes)
+        } else {
+          model = reduce(model, ev)
+        }
+      }
+      return { model, hints }
+    }
     case 'clear':
-      return clearModel()
+      return { model: clearModel(), hints: state.hints }
   }
 }
+
+/** Merge new hints into the existing list, deduplicated by name+remoteEntry. */
+function mergeHints(existing: FederationRemoteHint[], next: FederationRemoteHint[]): FederationRemoteHint[] {
+  if (next.length === 0) return existing
+  const key = (h: FederationRemoteHint): string => `${h.name ?? ''}|${h.remoteEntry ?? ''}`
+  const map = new Map<string, FederationRemoteHint>()
+  for (const h of existing) map.set(key(h), h)
+  for (const h of next) map.set(key(h), { ...map.get(key(h)), ...h })
+  return [...map.values()]
+}
+
+const initialAppState: AppState = { model: initialModel, hints: [] }
 
 // Per-mode tooltip text — shown on hover of the badge in the list and detail.
 const MODE_TOOLTIPS: Record<string, string> = {
@@ -75,12 +106,13 @@ const DIFF_OP_TOOLTIPS = {
 } as const
 
 export function App(): React.JSX.Element {
-  const [model, dispatch] = useReducer(modelReducer, initialModel)
+  const [state, dispatch] = useReducer(appReducer, initialAppState)
   const [selected, setSelected] = useState<string | null>(null)
   const [paused, setPaused] = useState(false)
   const [hideUnmounted, setHideUnmounted] = useState(true)
   const [connState, setConnState] = useState<'connected' | 'reconnecting' | 'disconnected'>('disconnected')
   const [helpOpen, setHelpOpen] = useState(false)
+  const [tab, setTab] = useState<Tab>('instances')
   const pausedRef = useBufferedPause(paused, dispatch)
 
   // Wire up the long-lived port to the background service worker. MV3 service
@@ -142,7 +174,10 @@ export function App(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const items = useMemo(() => model.order.map((id) => model.byId[id]).filter(Boolean), [model])
+  const items = useMemo(
+    () => state.model.order.map((id) => state.model.byId[id]).filter(Boolean),
+    [state.model],
+  )
   const visibleItems = useMemo(
     () => (hideUnmounted ? items.filter((i) => i.status !== 'unmounted') : items),
     [items, hideUnmounted],
@@ -150,9 +185,32 @@ export function App(): React.JSX.Element {
   const groups = useMemo(() => groupByNamespace(visibleItems), [visibleItems])
   const liveCount = items.filter((i) => i.status !== 'unmounted').length
   const totalCount = items.length
-  const selectedInstance = selected ? model.byId[selected] : null
+  const selectedInstance = selected ? state.model.byId[selected] : null
 
   return (
+    <div className="layout-with-tabs">
+      <div className="tabs">
+        <button
+          className={`tab${tab === 'instances' ? ' active' : ''}`}
+          onClick={() => setTab('instances')}
+          title="Live mf-bridge / mf-ssr instances on the inspected page."
+        >
+          Instances
+          {totalCount > 0 && <span className="tab-count">{totalCount}</span>}
+        </button>
+        <button
+          className={`tab${tab === 'audit' ? ' active' : ''}`}
+          onClick={() => setTab('audit')}
+          title="Module Federation shared-config audit, run in-browser via shared-inspector."
+        >
+          Shared Audit
+          {state.hints.length > 0 && <span className="tab-count">{state.hints.length}</span>}
+        </button>
+      </div>
+
+      {tab === 'audit' ? (
+        <AuditTab federationHints={state.hints} />
+      ) : (
     <div className="layout">
       <div className="toolbar">
         <button
@@ -260,6 +318,8 @@ export function App(): React.JSX.Element {
           <div className="empty-detail">Select an instance to inspect.</div>
         )}
       </div>
+    </div>
+      )}
     </div>
   )
 }
@@ -658,14 +718,21 @@ function EventRow({
         </span>
       )
       break
+    case 'federation':
+      // Federation snapshots flow into App-level state, never into an
+      // instance's event log — but exhaustiveness check requires we handle
+      // the kind here.
+      summary = <span>federation snapshot ({ev.remotes.length} remotes)</span>
+      break
   }
+  const evId = 'id' in ev ? ev.id : ''
   return (
     <div className="event-row">
       <span className={`kind-dot k-${ev.kind}`} aria-hidden />
       <span className="ts" title={`Captured at ${new Date(ev.ts).toISOString()}`}>{dt}</span>
       <span className="kind" title={KIND_TOOLTIPS[ev.kind]}>{ev.kind}</span>
       <span className={`summary ${cls}`}>{summary}</span>
-      <span className="source" title={`Instance: ${ev.id}`}>{ev.id}</span>
+      <span className="source" title={`Instance: ${evId}`}>{evId}</span>
     </div>
   )
 }
