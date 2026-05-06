@@ -648,6 +648,15 @@ code, pre, .mono {
   overflow: hidden;
 }
 
+/* Both tab panes stay mounted so each tab keeps its local state when the
+   user switches away. The inactive one is hidden via the `hidden` attr,
+   which Chrome maps to `display: none` (forcing it out of the grid). */
+.tab-pane {
+  min-height: 0;
+  overflow: hidden;
+}
+.tab-pane[hidden] { display: none; }
+
 .tabs {
   display: flex;
   align-items: stretch;

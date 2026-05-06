@@ -208,9 +208,7 @@ export function App(): React.JSX.Element {
         </button>
       </div>
 
-      {tab === 'audit' ? (
-        <AuditTab federationHints={state.hints} />
-      ) : (
+      <div className="tab-pane" hidden={tab !== 'instances'}>
     <div className="layout">
       <div className="toolbar">
         <button
@@ -319,7 +317,11 @@ export function App(): React.JSX.Element {
         )}
       </div>
     </div>
-      )}
+      </div>
+
+      <div className="tab-pane" hidden={tab !== 'audit'}>
+        <AuditTab federationHints={state.hints} />
+      </div>
     </div>
   )
 }
