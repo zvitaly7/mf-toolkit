@@ -10,11 +10,22 @@
  * isolated bridge picks events up as soon as a panel subscribes.
  */
 
-import { MF_PAGE_MESSAGE, type MFEvent, type PageMessage } from '../shared/protocol.js'
+import {
+  MF_PAGE_MESSAGE,
+  type FederationRemoteHint,
+  type MFEvent,
+  type PageMessage,
+} from '../shared/protocol.js'
 
 declare global {
   interface Window {
     __MF_DEVTOOLS_HOOK__?: { v: 1; emit(event: MFEvent): void }
+    /**
+     * Module Federation 2.0 runtime registers itself here. Schema is loose —
+     * we only read the bits we need (instances, share scope) and serialise
+     * them defensively.
+     */
+    __FEDERATION__?: unknown
   }
 }
 
@@ -104,4 +115,65 @@ if (!window.__MF_DEVTOOLS_HOOK__) {
       schedule()
     },
   }
+
+  // ─── Federation snapshot poller ────────────────────────────────────────────
+  //
+  // Module Federation 2.0 sets `window.__FEDERATION__` after its runtime
+  // initialises — there is no event we can subscribe to, so we poll for a
+  // bounded window after document_start. Once the global appears (and changes
+  // shape, e.g. additional remotes load lazily), we emit a `federation` event
+  // with a digest of the remotes the panel can use to fetch mf-manifest.json
+  // for each.
+  //
+  // For pages without MF 2.0, `__FEDERATION__` never shows up — the poller
+  // exhausts its budget and the audit tab falls back to manual upload.
+
+  let lastSerialized = ''
+  let polls = 0
+  const MAX_POLLS = 30
+  const POLL_INTERVAL_MS = 500
+
+  function snapshotFederation(): void {
+    const fed = window.__FEDERATION__
+    if (!fed || typeof fed !== 'object') return
+
+    const instances = (fed as { __INSTANCES__?: unknown }).__INSTANCES__
+    if (!Array.isArray(instances)) return
+
+    const remotes: FederationRemoteHint[] = []
+    for (const inst of instances) {
+      if (!inst || typeof inst !== 'object') continue
+      const i = inst as Record<string, unknown>
+      const hint: FederationRemoteHint = {}
+      if (typeof i.name === 'string') hint.name = i.name
+      if (typeof i.version === 'string') hint.version = i.version
+      // MF 2.0 tracks options.remoteEntry / moduleCache; flatten common shapes.
+      const opts = i.options as Record<string, unknown> | undefined
+      const remoteEntry =
+        (typeof i.remoteEntry === 'string' && i.remoteEntry) ||
+        (opts && typeof opts.remoteEntry === 'string' && opts.remoteEntry) ||
+        undefined
+      if (remoteEntry) hint.remoteEntry = remoteEntry
+      const manifestUrl =
+        (typeof i.manifestUrl === 'string' && i.manifestUrl) ||
+        (opts && typeof opts.manifestUrl === 'string' && opts.manifestUrl) ||
+        undefined
+      if (manifestUrl) hint.manifestUrl = manifestUrl
+      if (hint.name || hint.remoteEntry || hint.manifestUrl) remotes.push(hint)
+    }
+
+    const serialized = JSON.stringify(remotes)
+    if (serialized === lastSerialized) return
+    lastSerialized = serialized
+    queue.push({ kind: 'federation', ts: Date.now(), remotes })
+    schedule()
+  }
+
+  const pollId = setInterval(() => {
+    polls++
+    snapshotFederation()
+    if (polls >= MAX_POLLS) clearInterval(pollId)
+  }, POLL_INTERVAL_MS)
+  // First check immediately so single-shot MF setups don't wait 500ms.
+  snapshotFederation()
 }

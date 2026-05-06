@@ -389,6 +389,33 @@ const report = await inspect({
 });
 ```
 
+### Browser entrypoint
+
+For tools that run in the browser — like [`@mf-toolkit/mf-devtools`](../mf-devtools)'s Shared Audit tab — the package ships a `./browser` subpath export that excludes Node-only modules (file-system collector, CLI, webpack plugin, `write-report`):
+
+```typescript
+import {
+  analyzeProject,
+  analyzeFederation,
+  adaptMf2Manifest,
+  isMf2Manifest,
+  scoreProjectReport,
+  scoreFederationReport,
+  type ProjectManifest,
+  type ProjectReport,
+  type FederationReport,
+} from '@mf-toolkit/shared-inspector/browser';
+
+// Adapt an MF 2.0 mf-manifest.json fetched from the running app:
+const manifest = isMf2Manifest(raw) ? adaptMf2Manifest(raw) : (raw as ProjectManifest);
+
+const report: ProjectReport = analyzeProject(manifest);
+const score = scoreProjectReport(report);
+// → { score: 80, label: 'HEALTHY', high: 0, medium: 1, low: 0 }
+```
+
+The browser entry has zero `fs` / `path` imports, so it bundles cleanly into a Chrome extension or any SPA. The build-time collector still requires Node — generate `project-manifest.json` server-side (CLI, webpack plugin) and feed the JSON to the browser analyzer for the deepest audit, or accept MF 2.0 runtime manifests for a lighter live picture.
+
 ## Analysis depth
 
 | Depth | What it finds | Speed |

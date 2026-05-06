@@ -55,6 +55,31 @@ export type MFEvent =
       attempt?: number
       error?: string
     }
+  | {
+      kind: 'federation'
+      ts: number
+      /** Subset of window.__FEDERATION__ relevant to the audit. */
+      remotes: FederationRemoteHint[]
+    }
+
+/**
+ * Information about a single MF runtime instance discovered in the page.
+ * Schema follows what MF 2.0 puts on window.__FEDERATION__.__INSTANCES__,
+ * narrowed down to fields the panel actually consumes.
+ */
+export interface FederationRemoteHint {
+  /** Instance / remote name (e.g. `checkout`, `cart`). */
+  name?: string
+  /** Version string declared by the remote. */
+  version?: string
+  /** Full URL of the remote entry script — base for mf-manifest.json discovery. */
+  remoteEntry?: string
+  /**
+   * URL where mf-manifest.json was loaded from, if MF runtime exposes it
+   * directly. Otherwise the panel derives it from `remoteEntry`.
+   */
+  manifestUrl?: string
+}
 
 /** Marker on every window.postMessage we own, used for source-checking. */
 export const MF_PAGE_MESSAGE = '__MF_DEVTOOLS_PAGE__' as const

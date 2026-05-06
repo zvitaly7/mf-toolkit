@@ -1,6 +1,6 @@
 {
   "name": "@mf-toolkit/shared-inspector",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Stop debugging Module Federation in production. Audit shared config at build time.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
@@ -16,6 +16,10 @@
     "./webpack": {
       "types": "./dist/plugins/webpack.d.ts",
       "default": "./dist/plugins/webpack.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
     }
   },
   "files": [

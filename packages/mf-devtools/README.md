@@ -6,9 +6,10 @@
 
 ![mf-devtools panel: instance grouping, props diff, bidirectional event log, filter chips, lifetime tracking](./assets/panel.png)
 
-**Chrome DevTools panel that inspects [`@mf-toolkit/mf-bridge`](../mf-bridge) and [`@mf-toolkit/mf-ssr`](../mf-ssr) at runtime.**
+**Chrome DevTools panel for Module Federation.** Two tabs:
 
-Every microfrontend mount, prop update, host↔remote bus event, lazy-load attempt, retry, and SSR fragment fetch shows up in a dedicated DevTools tab — with full timeline, prop diffs, and a per-instance event log. Zero production cost: the emit sites in `mf-bridge` / `mf-ssr` are dead-code-eliminated in production builds.
+- **Instances** — live inspection of [`@mf-toolkit/mf-bridge`](../mf-bridge) and [`@mf-toolkit/mf-ssr`](../mf-ssr): every mount, prop update, host↔remote bus event, lazy-load attempt, retry, and SSR fragment fetch with a full timeline, prop diffs, and a per-instance event log. Driven by the dev-only emit hook in `mf-bridge` / `mf-ssr`; zero production cost (call sites are dead-code-eliminated).
+- **Shared Audit** — runs the [`@mf-toolkit/shared-inspector`](../shared-inspector) analyzer **in the browser** on Module Federation manifests discovered on the page. Auto-discovers MF 2.0 manifests via `window.__FEDERATION__` and `mf-manifest.json` network sniff; for classic Webpack 5 / 4 MF, upload a CLI-generated `project-manifest.json`. Surfaces version conflicts, singleton mismatches, ghost shares, deep-import bypass, eager risks, plus a risk score per project and across the federation. **Independent of `mf-bridge` / `mf-ssr`** — works on any Module Federation page.
 
 > **This package is not published to npm.** It ships as a Chrome extension — load `dist/` unpacked for development, or install from the Chrome Web Store.
 
@@ -42,7 +43,7 @@ For every instance the panel captures:
 - **Lazy-load lifecycle** — `start` → `retry` → `ok` / `error`, with attempt counters.
 - **SSR fetch lifecycle** — fragment HTTP fetches with attempts and error messages.
 
-## Panel features
+## Instances tab
 
 | Toolbar | What it does |
 |---|---|
@@ -78,6 +79,56 @@ The `?` button in the toolbar opens a cheat-sheet popover with the full legend �
 
 ![Built-in help popover with mode legend, event-kind explanations, and FAQ on StrictMode UNMOUNTED twins](./assets/help.png)
 
+## Shared Audit tab
+
+Runs the [`@mf-toolkit/shared-inspector`](../shared-inspector) analyzer in the browser on Module Federation manifests discovered on the page. **Independent of `mf-bridge` / `mf-ssr`** — works on any MF app, including federations you don't own as long as the runtime exposes manifests.
+
+### How manifests are discovered
+
+| Setup | What you do | What happens |
+|---|---|---|
+| **MF 2.0** (`@module-federation/enhanced`) | Open DevTools. | The page-world hook polls `window.__FEDERATION__` for ~15s after `document_start` and emits remote-entry hints. A network watcher (`chrome.devtools.network.onRequestFinished`) intercepts every `mf-manifest.json` fetch and pulls the body straight from the DevTools API — no extra HTTP. Both feed into the analyzer. |
+| **Classic Webpack 5 / 4 MF** (no MF 2.0 runtime) | Generate a manifest with the CLI, upload it. | The original `ModuleFederationPlugin` doesn't expose anything to the browser. Run the inspector once per MF, then drop the resulting `project-manifest.json` into **Upload JSON…**. |
+| **Mixed federation** | Open DevTools; upload classic ones manually. | MF 2.0 apps populate themselves; classic ones come in via upload. The federation analysis runs across the union. |
+
+CLI command for the classic case:
+
+```bash
+npx mf-inspector \
+  --source ./src \
+  --shared shared-config.json \
+  --name <mf-name> \
+  --kind host \
+  --write-manifest
+```
+
+> **CLI manifests give a deeper audit even on MF 2.0.** The runtime `mf-manifest.json` format only carries declarations (what's in `shared` / `remotes`); it has no usage data. Findings like *unused shared*, *share candidates*, and *deep-import bypass* only populate when the analyzer has the per-file imports the CLI manifest carries. Mix and match — auto-discover what you can, upload CLI manifests where you want the full picture.
+
+### What it shows
+
+| Section | Findings |
+|---|---|
+| **Federation audit** *(≥ 2 manifests loaded)* | Version conflicts, singleton mismatches, ghost shares, host gaps |
+| **Per-project** *(one card per MF)* | Version mismatch (`requiredVersion` vs installed), singleton risks, eager risks, unused shared, share candidates, deep-import bypass |
+| **Score** | `HEALTHY` / `GOOD` / `RISKY` / `CRITICAL`, computed per project and across the federation |
+
+### Persistence and isolation
+
+Loaded manifests are saved to `chrome.storage.local` keyed by **inspected origin**, so:
+
+- Reload the page or close DevTools — manifests survive.
+- Switch to a different site — independent audit set; nothing bleeds across origins.
+- `localhost:3000` and `staging.example.com` keep separate piles.
+- Click `×` on a card to drop one project.
+
+### Privacy
+
+The analyzer runs entirely in the panel. Nothing leaves the extension — no telemetry, no remote requests beyond fetching the manifests the page itself references. The only network traffic is `mf-manifest.json` retrieval; it uses extension `<all_urls>` host permissions, so CORS limitations of the inspected page do not apply.
+
+### `?` help
+
+The `?` button in the top-right of the Shared Audit tab opens an in-panel walkthrough — same content as this section, but at the user's fingertips.
+
 ## How it works
 
 ![How it works: page-world hook → ISOLATED-world content bridge → background service worker → React panel; emitDev sites are dead-code-eliminated in production builds](./assets/mfdevtools-how-it-works.png)
@@ -87,6 +138,7 @@ The `?` button in the toolbar opens a cheat-sheet popover with the full legend �
 3. The hook batches events with `queueMicrotask` and posts them to the ISOLATED-world content script via `window.postMessage`.
 4. The content script forwards batches over `chrome.runtime.sendMessage` to the background service worker, which fans them to the open devtools panel via a long-lived `chrome.runtime.connect` port.
 5. The panel's reducer normalises the event stream into instances + event logs, and renders them with React.
+6. **Shared Audit pipeline (separate but reusing the same transport):** the same MAIN-world hook polls `window.__FEDERATION__` for ~15s and emits `kind: 'federation'` events with a digest of remote-entry hints. In the panel, `chrome.devtools.network.onRequestFinished` intercepts every `mf-manifest.json` fetch and reads the body straight from the DevTools API. Both feed into [`@mf-toolkit/shared-inspector`](../shared-inspector)'s browser-safe entrypoint (the `./browser` subpath export, which excludes Node-only modules like the file-system collector), where `analyzeProject` and `analyzeFederation` produce findings the panel renders as React. Manifests can also be uploaded manually for classic Webpack 5 / 4 MF.
 
 ### MV3 robustness
 
@@ -123,7 +175,7 @@ Then in Chrome:
 2. Enable **Developer mode** (top-right toggle).
 3. Click **Load unpacked**.
 4. Pick `packages/mf-devtools/dist`.
-5. Open DevTools on a page that uses `mf-bridge` / `mf-ssr` — the **MF DevTools** tab will appear.
+5. Open DevTools on any page — the **MF DevTools** tab appears unconditionally. Use **Instances** for `mf-bridge` / `mf-ssr` apps, or **Shared Audit** for any Module Federation app.
 
 For watch-mode while iterating on the panel UI:
 
@@ -152,3 +204,15 @@ The host re-rendered and passed a new props object/callback to the bridge — `m
 
 **Q: Production cost?**
 Zero. The `emitDev` call sites are guarded by `if (process.env.NODE_ENV !== 'production')` and the entire `_devtools.ts` module is dead-code-eliminated by webpack/vite/esbuild in production builds.
+
+**Q: Shared Audit shows "ghost share … used unshared by —" with an empty list. Bug?**
+Not a bug — it's a format limitation. MF 2.0 `mf-manifest.json` only describes declarations (`shared`, `remotes`, `exposes`); it has no per-file usage data. So the analyzer can tell *what's declared* but not *where it's actually imported*. Findings that depend on usage data (`unused`, `share candidates`, `deep-import bypass`, the `usedUnsharedBy` list of ghost shares) only populate when you upload a `project-manifest.json` from the inspector CLI, which scans the source. Mix and match — auto-discovered manifests for the live picture, CLI manifests where you want full coverage.
+
+**Q: Shared Audit can't see my federation, even though MF 2.0 is in use.**
+Two common causes. (1) The page loaded all remotes *before* DevTools opened, so the network watcher missed every `mf-manifest.json` fetch — reload the page with DevTools open. The `__FEDERATION__` poller picks up most of these, but if your runtime doesn't expose `manifestUrl`/`remoteEntry` on its instances, manifests can't be located automatically. (2) Your app uses classic `ModuleFederationPlugin` without the MF 2.0 runtime — `__FEDERATION__` doesn't exist there. Generate a `project-manifest.json` with `npx mf-inspector --write-manifest` and upload it manually.
+
+**Q: Does Shared Audit send my manifests anywhere?**
+No. The analyzer is bundled into the panel and runs locally. The only network traffic is `mf-manifest.json` retrieval against URLs the page itself references, made from the extension context (so CORS doesn't apply). Nothing is sent to a server, and the loaded manifests are stored in `chrome.storage.local`.
+
+**Q: Does Shared Audit need `mf-bridge` / `mf-ssr`?**
+No. Shared Audit is independent of the runtime tab — it works on any Module Federation page (MF 2.0 with auto-discovery, classic MF with manual upload). The Instances tab is the one tied to `mf-bridge` / `mf-ssr`.

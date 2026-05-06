@@ -26,7 +26,7 @@ export default defineManifest({
       world: 'ISOLATED',
     },
   ],
-  permissions: ['scripting'],
+  permissions: ['scripting', 'storage'],
   host_permissions: ['<all_urls>'],
   icons: {
     '16': 'public/icon.svg',
