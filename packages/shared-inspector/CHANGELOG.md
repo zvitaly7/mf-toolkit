@@ -7,6 +7,27 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.7.0] — 2026-05-06
+
+Adds a browser-safe entrypoint for in-browser consumers. Existing imports
+from `.` and `./webpack` are unchanged.
+
+### Added
+
+- **`./browser` subpath export** — browser-safe re-export of the analyzer
+  surface: `analyzeProject`, `analyzeFederation`, `adaptMf2Manifest`,
+  `isMf2Manifest`, `parseSharedConfig`, `scoreProjectReport`,
+  `scoreFederationReport`, and the full type surface
+  (`ProjectManifest`, `ProjectReport`, `FederationReport`, finding
+  entry types). Excludes Node-only modules — collector
+  (`buildProjectManifest`, version/import resolution), CLI,
+  webpack plugin, `write-report` — so the entry point bundles cleanly
+  into a browser extension or any SPA without `fs` / `path` shims.
+  The canonical consumer is the new Shared Audit tab in
+  [`@mf-toolkit/mf-devtools`](../mf-devtools).
+
+---
+
 ## [0.6.0] — 2026-04-26
 
 Two new detector classes and a redesigned federation pipeline. Most CLI users
