@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import type { FederationRemoteHint } from '../../shared/protocol.js'
 import {
   emptyAudit,
@@ -15,6 +15,7 @@ import type {
   EagerRiskEntry,
   FederationReport,
   MismatchedEntry,
+  ProjectManifest,
   ProjectReport,
   RiskScore,
   SingletonRiskEntry,
@@ -37,6 +38,19 @@ function reducer(state: AuditState, action: Action): AuditState {
   }
 }
 
+/** Shape of what we persist per origin — manifest + source only; reports
+ *  and scores are recomputed from the manifest on hydrate. */
+interface PersistedEntry {
+  manifest: ProjectManifest
+  source?: string
+}
+
+const STORAGE_KEY_PREFIX = 'mf-audit:'
+
+function storageKey(origin: string): string {
+  return `${STORAGE_KEY_PREFIX}${origin}`
+}
+
 export interface AuditTabProps {
   /**
    * Federation hints accumulated from the page-world `__FEDERATION__` poller.
@@ -48,6 +62,56 @@ export interface AuditTabProps {
 export function AuditTab({ federationHints }: AuditTabProps): React.JSX.Element {
   const [state, dispatch] = useReducer(reducer, emptyAudit)
   const fetchedUrlsRef = useRef<Set<string>>(new Set())
+  // Persist-cycle state. `origin` identifies the inspected page so two
+  // different sites don't share manifests. `hydrated` gates the save effect
+  // until the initial load has completed, otherwise we'd overwrite stored
+  // data with the empty initial state on first render.
+  const [origin, setOrigin] = useState<string | null>(null)
+  const [hydrated, setHydrated] = useState(false)
+
+  // Resolve the inspected window's origin once. Used as the storage key so
+  // the audit is per-site, not per-tab (tab IDs reshuffle on close/reopen).
+  useEffect(() => {
+    chrome.devtools.inspectedWindow.eval<string>(
+      'location.origin',
+      (result, exception) => {
+        if (exception || typeof result !== 'string' || !result) {
+          // chrome:// pages, file:// without permission, evaluation error —
+          // skip persistence rather than fail loud.
+          setHydrated(true)
+          return
+        }
+        setOrigin(result)
+      },
+    )
+  }, [])
+
+  // Hydrate from storage once we know the origin.
+  useEffect(() => {
+    if (!origin || hydrated) return
+    const key = storageKey(origin)
+    void chrome.storage.local.get(key).then((result) => {
+      const stored = (result[key] as PersistedEntry[] | undefined) ?? []
+      for (const entry of stored) {
+        dispatch({ type: 'ingest', raw: entry.manifest, source: entry.source })
+      }
+      setHydrated(true)
+    }).catch(() => {
+      setHydrated(true)
+    })
+  }, [origin, hydrated])
+
+  // Persist after hydrate. Writing in `state.projects` change picks up both
+  // ingestions and drops; we strip reports/scores since they're derivable.
+  useEffect(() => {
+    if (!origin || !hydrated) return
+    const key = storageKey(origin)
+    const entries: PersistedEntry[] = state.projects.map((p) => ({
+      manifest: p.manifest,
+      source: p.source,
+    }))
+    void chrome.storage.local.set({ [key]: entries }).catch(() => {})
+  }, [origin, hydrated, state.projects])
 
   // Subscribe to live manifest fetches the page makes after DevTools is open.
   useEffect(() => {
