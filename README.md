@@ -136,9 +136,10 @@ import { MFBridgeSSR } from '@mf-toolkit/mf-ssr'
 
 ![mf-devtools: instances grouped by namespace, side-by-side props snapshot and diff, bidirectional event log with filter chips and source ids, lifetime tracking](./packages/mf-devtools/assets/demo.png)
 
-**Chrome DevTools extension for inspecting `mf-bridge` and `mf-ssr` at runtime.**
+**Chrome DevTools extension for Module Federation.** Two tabs in one panel:
 
-Adds an "MF" panel to Chrome DevTools that lists every mounted microfrontend on the page — namespace, mode (`bridge` / `lazy` / `hydrated` / `ssr-url` / `ssr-loader`), live props snapshot, bidirectional event log, and SSR fetch lifecycle. Driven by a tiny `window.__MF_DEVTOOLS_HOOK__` contract that `mf-bridge` and `mf-ssr` call into; calls are gated behind `process.env.NODE_ENV !== 'production'` so production bundles tree-shake the instrumentation entirely.
+- **Instances** — runtime inspection of `mf-bridge` and `mf-ssr`. Lists every mounted microfrontend on the page (namespace, mode, live props, bidirectional event log, SSR fetch lifecycle). Driven by a tiny `window.__MF_DEVTOOLS_HOOK__` contract; calls are gated behind `process.env.NODE_ENV !== 'production'` so production bundles tree-shake the instrumentation entirely.
+- **Shared Audit** — runs the [`shared-inspector`](./packages/shared-inspector) analyzer in-browser on Module Federation manifests discovered on the page. **Auto-discovers MF 2.0** via `window.__FEDERATION__` and `mf-manifest.json` network sniff; **for classic Webpack 5 / 4 MF**, upload a CLI-generated `project-manifest.json`. Surfaces version conflicts, singleton mismatches, ghost shares, deep-import bypass, eager risks, and a risk score per project + federation. Independent of `mf-bridge` / `mf-ssr` — works on any MF page. Persists per origin via `chrome.storage.local`.
 
 > **Not published to npm.** Developer companion shipped via the Chrome Web Store (or loaded unpacked from `dist/` for development).
 
