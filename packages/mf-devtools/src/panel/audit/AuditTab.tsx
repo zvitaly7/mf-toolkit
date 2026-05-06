@@ -68,6 +68,7 @@ export function AuditTab({ federationHints }: AuditTabProps): React.JSX.Element 
   // data with the empty initial state on first render.
   const [origin, setOrigin] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   // Resolve the inspected window's origin once. Used as the storage key so
   // the audit is per-site, not per-tab (tab IDs reshuffle on close/reopen).
@@ -147,22 +148,160 @@ export function AuditTab({ federationHints }: AuditTabProps): React.JSX.Element 
 
   return (
     <div className="audit">
+      <div className="audit-head">
+        <button
+          className="help-btn"
+          onClick={() => setHelpOpen(true)}
+          title="How does Shared Audit work? (MF 2.0 vs classic Webpack flow, what each section means, persistence)"
+          aria-label="Help"
+        >
+          ?
+        </button>
+      </div>
+      {helpOpen && <AuditHelpPopover onClose={() => setHelpOpen(false)} />}
       <ManualUpload onLoad={onUpload} />
       <FederationSection report={state.federation} score={state.federationScore} />
       <ProjectsSection projects={state.projects} onDrop={(n) => dispatch({ type: 'drop', name: n })} />
       {state.projects.length === 0 && (
         <div className="audit-empty">
           <p>
-            No Module Federation manifests detected yet. Reload the page if
-            it loaded before DevTools opened, or upload a manifest / report
-            JSON manually using the form above.
+            No Module Federation manifests detected yet. If your app uses
+            MF 2.0 (<code>@module-federation/enhanced</code>), reload the
+            page — they'll auto-discover. For classic Webpack 5 MF, generate
+            a manifest with the <code>mf-inspector</code> CLI and upload it
+            above.{' '}
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); setHelpOpen(true) }}
+            >
+              How does this work?
+            </a>
           </p>
-          <p style={{ fontSize: 11, color: '#888' }}>
-            Auto-discovery uses <code>window.__FEDERATION__</code> (MF 2.0)
-            and watches for <code>mf-manifest.json</code> network requests.
+          <p className="audit-empty-hint">
+            Auto-discovery polls <code>window.__FEDERATION__</code> for ~15s
+            after document_start and watches for <code>mf-manifest.json</code>
+            {' '}network requests via the DevTools API.
           </p>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Help popover ─────────────────────────────────────────────────────────────
+
+function AuditHelpPopover({ onClose }: { onClose: () => void }): React.JSX.Element {
+  return (
+    <div className="help-overlay" onClick={onClose}>
+      <div
+        className="help-popover"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Shared Audit help"
+      >
+        <div className="help-head">
+          <h3>Shared Audit — how it works</h3>
+          <button onClick={onClose} aria-label="Close" className="close-btn">×</button>
+        </div>
+
+        <p>
+          Runs the <code>@mf-toolkit/shared-inspector</code> analyzer in the
+          browser on your Module Federation manifests. Nothing has to be
+          imported or wired into your app.
+        </p>
+
+        <h4>Where manifests come from</h4>
+
+        <p>
+          <strong>MF 2.0 (<code>@module-federation/enhanced</code>) — automatic.</strong>
+          {' '}We poll <code>window.__FEDERATION__</code> for ~15 seconds after the
+          page loads and intercept <code>mf-manifest.json</code> network
+          requests off the DevTools panel. Open DevTools, switch to Shared
+          Audit — that's it.
+        </p>
+
+        <p>
+          <strong>Classic Webpack 5 / 4 MF — one CLI step.</strong>{' '}
+          The original <code>ModuleFederationPlugin</code> doesn't expose
+          anything to the browser. Generate a manifest once per MF with the
+          CLI, then upload it:
+        </p>
+        <pre className="help-pre">
+{`npx mf-inspector \\
+  --source ./src \\
+  --shared shared-config.json \\
+  --name <mf-name> \\
+  --kind host \\
+  --write-manifest`}
+        </pre>
+        <p>
+          Drag-drop the resulting <code>project-manifest.json</code> into the{' '}
+          <strong>Upload JSON…</strong> button (or paste it). Repeat for
+          every MF in your federation.
+        </p>
+
+        <p>
+          <strong>Want the deepest audit?</strong>{' '}
+          Use the CLI manifest even on MF 2.0. CLI manifests carry usage
+          data — per-file imports, deep-imports, candidates — that the
+          runtime <code>mf-manifest.json</code> format simply doesn't include.
+          Findings like <em>unused shared</em>, <em>share candidates</em>, and
+          <em> deep-import bypass</em> only populate from CLI manifests.
+        </p>
+
+        <h4>What each section means</h4>
+
+        <dl className="legend">
+          <dt><strong>Federation audit</strong></dt>
+          <dd>
+            Issues <em>between</em> MFs: <code>requiredVersion</code> ranges
+            that don't overlap, inconsistent <code>singleton</code> flags
+            across MFs, ghost shares (a package shared by one MF but
+            unused/unshared by everyone else), host gaps (a package used by
+            multiple MFs but shared by none). Appears when ≥ 2 manifests are
+            loaded.
+          </dd>
+          <dt><strong>Per-project</strong></dt>
+          <dd>
+            Issues <em>inside</em> one MF: configured{' '}
+            <code>requiredVersion</code> vs installed version, eager imports
+            without <code>singleton</code>, deep-import bypass of the shared
+            scope (e.g. <code>lodash/cloneDeep</code> imported directly while{' '}
+            <code>lodash</code> is shared), unused shared declarations,
+            packages used everywhere that should probably be shared.
+          </dd>
+          <dt><strong>Score</strong></dt>
+          <dd>
+            <code>HEALTHY</code> / <code>GOOD</code> / <code>RISKY</code> /{' '}
+            <code>CRITICAL</code>, computed per project and across the whole
+            federation. High-severity findings (version conflicts,
+            deep-import bypass) sink the score faster than low-severity
+            ones (unused shared).
+          </dd>
+        </dl>
+
+        <h4>Persistence</h4>
+
+        <p>
+          Loaded manifests are remembered per <strong>origin</strong> via{' '}
+          <code>chrome.storage.local</code>. Reload the page, close DevTools,
+          switch sites — they survive. <code>localhost:3000</code> and{' '}
+          <code>staging.example.com</code> keep independent audits.
+        </p>
+        <p>
+          Click <code>×</code> on a project card to drop one entry. Manually
+          uploaded manifests stay dropped; auto-discovered ones (MF 2.0) come
+          back on the next page load if the runtime still exposes them.
+        </p>
+
+        <h4>What the analyzer never does</h4>
+
+        <p>
+          Reads no source code from your machine — only the JSON you upload
+          or that the page itself fetches. Nothing is sent over the network;
+          the analyzer runs locally in the panel.
+        </p>
+      </div>
     </div>
   )
 }

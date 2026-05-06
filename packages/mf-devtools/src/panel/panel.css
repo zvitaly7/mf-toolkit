@@ -709,6 +709,12 @@ code, pre, .mono {
   background: var(--bg);
 }
 
+.audit-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .audit-empty {
   margin-top: 24px;
   padding: 16px;
@@ -718,6 +724,24 @@ code, pre, .mono {
 }
 
 .audit-empty p { margin: 0 0 8px; }
+.audit-empty p:last-child { margin-bottom: 0; }
+.audit-empty a { color: var(--accent); text-decoration: underline; }
+.audit-empty a:hover { color: var(--accent-dim); }
+.audit-empty-hint { font-size: 11px; color: var(--text-dim); }
+
+.help-pre {
+  margin: 6px 0 12px;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: 'SFMono-Regular', Menlo, 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}
 
 .audit-upload {
   margin-bottom: 16px;
