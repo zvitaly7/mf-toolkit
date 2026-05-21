@@ -4,8 +4,8 @@
  * ready to feed `analyzeFederation`.
  *
  * Inputs accepted:
- *   • MF 2.0 raw manifests   → adapted via shared-inspector's adaptMf2Manifest
- *   • shared-inspector manifests already in canonical form → passed through
+ *   • MF 2.0 raw manifests   → adapted via shared-inspector's parseManifestInput
+ *   • shared-inspector manifests already in canonical form → accepted by parseManifestInput
  *   • shared-inspector reports → not re-runnable; surfaced as ready-to-show
  *
  * Deduplication keys on `project.name` so loading the same manifest twice
@@ -14,10 +14,9 @@
  */
 
 import {
-  adaptMf2Manifest,
-  isMf2Manifest,
   analyzeFederation,
   analyzeProject,
+  parseManifestInput,
   scoreFederationReport,
   scoreProjectReport,
   type ProjectManifest,
@@ -52,21 +51,7 @@ export const emptyAudit: AuditState = {
  * Returns null when the shape doesn't match either format.
  */
 export function adaptUnknown(raw: unknown): ProjectManifest | null {
-  if (!raw || typeof raw !== 'object') return null
-
-  if (isMf2Manifest(raw)) {
-    try {
-      return adaptMf2Manifest(raw)
-    } catch {
-      return null
-    }
-  }
-
-  // Heuristic: shared-inspector manifest (schemaVersion === 2)
-  const schemaVersion = (raw as { schemaVersion?: unknown }).schemaVersion
-  if (schemaVersion === 2) return raw as ProjectManifest
-
-  return null
+  return parseManifestInput(raw)
 }
 
 /**

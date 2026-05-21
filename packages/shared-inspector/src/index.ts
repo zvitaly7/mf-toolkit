@@ -10,6 +10,7 @@ export {
   type Mf2RawManifest,
   type Mf2SharedEntry,
 } from './collector/read-mf2-manifest.js';
+export { parseManifestInput } from './collector/parse-manifest-input.js';
 
 // ─── Shortcut API ─────────────────────────────────────────────────────────────
 export { inspect } from './inspect.js';

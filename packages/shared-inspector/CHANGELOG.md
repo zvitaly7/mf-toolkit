@@ -7,6 +7,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.8.0] — 2026-05-21
+
+Stabilizes manifest ingestion as a reusable browser-safe API and tightens the
+package metadata for npm publishing. Existing imports from `.`, `./webpack`,
+and `./browser` are unchanged.
+
+### Added
+
+- **`parseManifestInput(raw)`** — normalises arbitrary JSON into the canonical
+  `ProjectManifest` shape accepted by `analyzeProject` / `analyzeFederation`.
+  Supports both native shared-inspector `ProjectManifest` files and MF 2.0
+  `mf-manifest.json` files from `@module-federation/enhanced`; returns `null`
+  for unsupported shapes. Exported from both `.` and `./browser`, so browser
+  consumers can share the same manifest-normalisation path without pulling in
+  Node-only collector code.
+
+### Changed
+
+- **`@mf-toolkit/mf-devtools` Shared Audit now reuses `parseManifestInput`**
+  from `@mf-toolkit/shared-inspector/browser` instead of carrying a local
+  manifest-shape heuristic.
+- **Package hardening for publishing** — marks the package as
+  `"sideEffects": false` and adds `prepublishOnly` to run build + tests before
+  npm publish.
+
+---
+
 ## [0.7.0] — 2026-05-06
 
 Adds a browser-safe entrypoint for in-browser consumers. Existing imports

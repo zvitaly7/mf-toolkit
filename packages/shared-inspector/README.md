@@ -397,17 +397,16 @@ For tools that run in the browser — like [`@mf-toolkit/mf-devtools`](../mf-dev
 import {
   analyzeProject,
   analyzeFederation,
-  adaptMf2Manifest,
-  isMf2Manifest,
+  parseManifestInput,
   scoreProjectReport,
   scoreFederationReport,
-  type ProjectManifest,
   type ProjectReport,
   type FederationReport,
 } from '@mf-toolkit/shared-inspector/browser';
 
 // Adapt an MF 2.0 mf-manifest.json fetched from the running app:
-const manifest = isMf2Manifest(raw) ? adaptMf2Manifest(raw) : (raw as ProjectManifest);
+const manifest = parseManifestInput(raw);
+if (!manifest) throw new Error('Unsupported manifest format');
 
 const report: ProjectReport = analyzeProject(manifest);
 const score = scoreProjectReport(report);

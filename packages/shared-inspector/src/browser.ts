@@ -2,7 +2,7 @@
 //
 // Subset of @mf-toolkit/shared-inspector that runs in the browser:
 //   • analyzer   — pure TS, accepts ProjectManifest, returns ProjectReport / FederationReport
-//   • adapters   — convert MF 2.0 manifests to ProjectManifest
+//   • adapters   — normalise MF 2.0 / ProjectManifest JSON inputs
 //   • parser     — normalise raw `shared` config (Object | Array | string[])
 //   • scoring    — risk score for a report
 //   • types      — full type surface
@@ -30,6 +30,7 @@ export {
   type Mf2RawManifest,
   type Mf2SharedEntry,
 } from './collector/read-mf2-manifest.js';
+export { parseManifestInput } from './collector/parse-manifest-input.js';
 
 // ─── Shared-config parser ─────────────────────────────────────────────────────
 export { parseSharedConfig } from './collector/parse-shared-config.js';

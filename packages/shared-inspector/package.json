@@ -1,10 +1,11 @@
 {
   "name": "@mf-toolkit/shared-inspector",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Stop debugging Module Federation in production. Audit shared config at build time.",
   "author": "Vitaly Zheltko",
   "license": "MIT",
   "type": "module",
+  "sideEffects": false,
   "bin": {
     "mf-inspector": "./dist/cli.js"
   },
@@ -31,7 +32,8 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "microfrontend",
