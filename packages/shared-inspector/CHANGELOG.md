@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Removed
+
+- **`CollectorOptions.parser` and the `ParserStrategy` type** — the `parser`
+  option was documented as `@planned` and had no runtime effect (only the
+  regex import parser exists). Removed ahead of a stable 1.0 API surface.
+  No behavioural change — `'regex'` was always the only strategy.
+
+### Fixed
+
+- **Webpack plugin ignored deep-import-bypass findings.**
+  `MfSharedInspectorPlugin` left `deepImportBypass` out of both its
+  "has findings" check and `shouldFailBuild`, so a project whose only issue
+  was a deep-import bypass got no warning and `failOn: 'any'` did not fail
+  the build. It now matches the CLI. The build-failure message also reports
+  eager-risk and deep-import-bypass counts.
+- **`federation` CLI accepted arbitrary JSON as a manifest.** JSON that was
+  neither a `ProjectManifest` nor an MF 2.0 `mf-manifest.json` was cast
+  through unchecked. The command now normalises input via `parseManifestInput`
+  and exits with a clear error for unrecognised manifests.
+
+---
+
 ## [0.8.0] — 2026-05-21
 
 Stabilizes manifest ingestion as a reusable browser-safe API and tightens the

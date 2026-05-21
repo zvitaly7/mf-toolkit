@@ -437,6 +437,20 @@ describe('main', () => {
     vi.unstubAllGlobals();
   });
 
+  it('federation: returns 1 when JSON is not a recognised manifest', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ hello: 'world' }),
+    }));
+
+    const chunks: string[] = [];
+    const code = await main(['federation', 'https://cdn.example.com/bogus.json'], (s) => chunks.push(s));
+    expect(code).toBe(1);
+    expect(chunks.join('')).toContain('not a recognised manifest');
+
+    vi.unstubAllGlobals();
+  });
+
   it('federation: returns 1 when --fail-on mismatch and version conflicts exist', async () => {
     vi.mocked(analyzeFederation).mockReturnValue({
       ghostShares: [], hostGaps: [], singletonMismatches: [],

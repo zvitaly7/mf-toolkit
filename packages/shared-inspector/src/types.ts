@@ -23,8 +23,6 @@ export interface PackageOccurrence {
   via: 'direct' | 'reexport';
 }
 
-export type ParserStrategy = 'regex' | 'typescript';
-
 export interface CollectorOptions {
   /** Project name (written into the manifest) */
   name: string;
@@ -61,12 +59,6 @@ export interface CollectorOptions {
    * @example ['@my-org/design-system', '@my-org/*']
    */
   workspacePackages?: string[];
-  /**
-   * Parser strategy for import extraction.
-   * @default 'regex'
-   * @planned 'typescript' (AST-based) — not yet implemented; value is accepted but has no effect.
-   */
-  parser?: ParserStrategy;
 }
 
 // ─── ProjectManifest (schemaVersion: 2) ──────────────────────────────────────

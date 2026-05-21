@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { analyzeFederation } from '../analyzer/analyze-federation.js';
 import { formatFederationReport } from '../reporter/format-federation-report.js';
 import { scoreFederationReport } from '../reporter/scoring.js';
-import { isMf2Manifest, adaptMf2Manifest } from '../collector/read-mf2-manifest.js';
+import { parseManifestInput } from '../collector/parse-manifest-input.js';
 import { createSpinner, createNullSpinner } from './spinner.js';
 import { colorizeReport } from './colorize-report.js';
 import type { FederationReport, ProjectManifest } from '../types.js';
@@ -60,14 +60,16 @@ export async function runFederation(
       write(`Error: "${source}" is not valid JSON\n`);
       return 1;
     }
-    // Auto-detect format: native ProjectManifest (schemaVersion: 2) or MF 2.0
-    // mf-manifest.json. The latter is what `@module-federation/enhanced` emits
-    // — supporting it lets users analyse builds without integrating our plugin.
-    if (isMf2Manifest(parsed)) {
-      manifests.push(adaptMf2Manifest(parsed));
-    } else {
-      manifests.push(parsed as ProjectManifest);
+    // parseManifestInput accepts both a native ProjectManifest and an MF 2.0
+    // mf-manifest.json (what @module-federation/enhanced emits), normalising
+    // to ProjectManifest — or returning null for unrecognised JSON.
+    const manifest = parseManifestInput(parsed);
+    if (!manifest) {
+      spinner.stop();
+      write(`Error: "${source}" is not a recognised manifest (expected a shared-inspector ProjectManifest or an MF 2.0 mf-manifest.json)\n`);
+      return 1;
     }
+    manifests.push(manifest);
   }
 
   spinner.succeed(`Loaded ${manifests.length} manifest${manifests.length > 1 ? 's' : ''}`);

@@ -1,5 +1,5 @@
 import { isAbsolute, join, basename } from 'node:path';
-import type { WebpackPluginOptions } from '../types.js';
+import type { ProjectReport, WebpackPluginOptions } from '../types.js';
 import { buildProjectManifest } from '../collector/build-project-manifest.js';
 import { analyzeProject } from '../analyzer/analyze-project.js';
 import { formatReport } from '../reporter/format-report.js';
@@ -37,8 +37,8 @@ const PLUGIN_NAME = 'MfSharedInspectorPlugin';
  * Webpack plugin that analyses Module Federation shared dependencies after
  * each compilation and reports issues to the console and/or build output.
  *
- * In v0.1, `sharedConfig` must be provided explicitly. Auto-extraction from
- * ModuleFederationPlugin is planned for v0.1.1.
+ * `sharedConfig` is auto-extracted from ModuleFederationPlugin when not
+ * provided explicitly.
  *
  * @example
  * ```js
@@ -71,7 +71,6 @@ export class MfSharedInspectorPlugin {
           ignore,
           tsconfigPath,
           workspacePackages,
-          parser,
           analysis,
           warn = true,
           failOn,
@@ -120,7 +119,6 @@ export class MfSharedInspectorPlugin {
             ignore,
             tsconfigPath,
             workspacePackages,
-            parser,
           });
 
           const report = analyzeProject(manifest, analysis);
@@ -130,7 +128,8 @@ export class MfSharedInspectorPlugin {
             report.unused.length > 0 ||
             report.candidates.length > 0 ||
             report.singletonRisks.length > 0 ||
-            report.eagerRisks.length > 0;
+            report.eagerRisks.length > 0 ||
+            report.deepImportBypass.length > 0;
 
           if (warn && hasFindings) {
             console.warn(
@@ -150,7 +149,8 @@ export class MfSharedInspectorPlugin {
             const msg =
               `[${PLUGIN_NAME}] Build failed (failOn: "${failOn}"): ` +
               `${report.mismatched.length} mismatch, ${report.unused.length} unused, ` +
-              `${report.candidates.length} candidates, ${report.singletonRisks.length} singleton risks.`;
+              `${report.candidates.length} candidates, ${report.singletonRisks.length} singleton risks, ` +
+              `${report.eagerRisks.length} eager risks, ${report.deepImportBypass.length} deep-import bypasses.`;
             compilation.errors.push(new Error(msg));
           }
         } catch (err) {
@@ -170,7 +170,7 @@ export class MfSharedInspectorPlugin {
 
 function shouldFailBuild(
   failOn: 'mismatch' | 'unused' | 'any',
-  report: { mismatched: unknown[]; unused: unknown[]; candidates: unknown[]; singletonRisks: unknown[]; eagerRisks: unknown[] },
+  report: ProjectReport,
 ): boolean {
   switch (failOn) {
     case 'mismatch': return report.mismatched.length > 0;
@@ -180,7 +180,8 @@ function shouldFailBuild(
       report.unused.length > 0 ||
       report.candidates.length > 0 ||
       report.singletonRisks.length > 0 ||
-      report.eagerRisks.length > 0
+      report.eagerRisks.length > 0 ||
+      report.deepImportBypass.length > 0
     );
   }
 }
