@@ -53,9 +53,9 @@ const MODE_TOOLTIPS: Record<string, string> = {
   hydrated: '<MFBridgeHydrated> — binds the host to a DOM container that already has SSR-rendered markup',
   'ssr-url': '<MFBridgeSSR url=...> — fetched HTML fragment from a URL',
   'ssr-loader': '<MFBridgeSSR loader=...> — fragment loaded through a Module Federation loader',
-  'remote-entry': 'createMFEntry() called inside a remote (reserved; not yet emitted)',
-  'remote-define-entry': 'defineMFEntry() called inside a remote (reserved; not yet emitted)',
-  'remote-hydrate': 'hydrateWithBridge() called inside a remote (reserved; not yet emitted)',
+  'remote-entry': 'createMFEntry() — the remote half of a <MFBridge>/<MFBridgeLazy> mount, rendered with React on the remote side',
+  'remote-define-entry': 'defineMFEntry() — framework-agnostic remote mount (Vue/Angular/Svelte/vanilla) driven by the host bridge',
+  'remote-hydrate': 'hydrateWithBridge() — the remote half that hydrates an SSR fragment and listens for streamed prop updates',
   fetch: 'Synthetic instance representing the HTTP fetch of an SSR fragment HTML or loader.js',
 }
 

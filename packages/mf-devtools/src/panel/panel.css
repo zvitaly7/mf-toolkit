@@ -307,6 +307,11 @@ code, pre, .mono {
 .badge-ssr-loader  { background: rgba(167, 139, 250, 0.18); color: #c4b5fd; }
 .badge-error       { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
 .badge-unmounted   { background: rgba(120, 120, 130, 0.2); color: var(--text-mute); }
+/* Remote-side modes (the MF's own half of a mount). Rose/teal/indigo set,
+   kept distinct from the host violet/amber/emerald so the two halves read apart. */
+.badge-remote-entry        { background: rgba(244, 114, 182, 0.18); color: #f9a8d4; }
+.badge-remote-define-entry { background: rgba(45, 212, 191, 0.18); color: #5eead4; }
+.badge-remote-hydrate      { background: rgba(129, 140, 248, 0.18); color: #a5b4fc; }
 
 /* ─── Detail (right pane) ────────────────────────────────────────────────── */
 
@@ -401,6 +406,12 @@ code, pre, .mono {
 .info-chip.chip-mode-ssr-url strong { color: var(--mode-ssr-url); }
 .info-chip.chip-mode-ssr-loader  { border-color: rgba(167, 139, 250, 0.35); background: rgba(167, 139, 250, 0.08); }
 .info-chip.chip-mode-ssr-loader strong { color: var(--mode-ssr-loader); }
+.info-chip.chip-mode-remote-entry        { border-color: rgba(244, 114, 182, 0.35); background: rgba(244, 114, 182, 0.08); }
+.info-chip.chip-mode-remote-entry strong { color: #f9a8d4; }
+.info-chip.chip-mode-remote-define-entry        { border-color: rgba(45, 212, 191, 0.35); background: rgba(45, 212, 191, 0.08); }
+.info-chip.chip-mode-remote-define-entry strong { color: #5eead4; }
+.info-chip.chip-mode-remote-hydrate        { border-color: rgba(129, 140, 248, 0.35); background: rgba(129, 140, 248, 0.08); }
+.info-chip.chip-mode-remote-hydrate strong { color: #a5b4fc; }
 
 /* Status-tinted info chips. */
 .info-chip.chip-status-mounted   { border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.08); }

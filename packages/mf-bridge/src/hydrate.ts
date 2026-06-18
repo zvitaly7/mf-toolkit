@@ -1,6 +1,7 @@
 import { createElement, type ComponentType } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { DOMEventBus } from './dom-event-bus.js'
+import { emitDev, nextDevtoolsId } from './_devtools.js'
 
 export interface HydrateWithBridgeOpts {
   /** Must match the `namespace` passed to `MFBridgeSSR` and `MFBridgeHydrated` on the host. */
@@ -9,6 +10,14 @@ export interface HydrateWithBridgeOpts {
   selector?: string
   /** Called when the host sends an imperative command via `commandRef`. */
   onCommand?: (type: string, payload: unknown) => void
+  /**
+   * Called when the embedded `<script data-mf-props>` payload cannot be parsed
+   * as JSON. Hydration still proceeds with empty props, but the error is
+   * surfaced here for observability instead of being swallowed silently — a
+   * malformed payload usually means the SSR serializer and the client bundle
+   * disagree on the props shape.
+   */
+  onError?: (error: Error) => void
 }
 
 /**
@@ -36,7 +45,7 @@ export function hydrateWithBridge<P extends object>(
 ): () => void {
   if (typeof document === 'undefined') return () => {}
 
-  const { namespace, selector, onCommand } = opts
+  const { namespace, selector, onCommand, onError } = opts
   const containerSelector = selector ?? `[data-mf-namespace="${namespace}"]`
   const containers = document.querySelectorAll(containerSelector)
 
@@ -49,14 +58,36 @@ export function hydrateWithBridge<P extends object>(
     const propsEl = container.querySelector('script[data-mf-props]')
     let props: P = {} as P
     if (propsEl?.textContent) {
-      try { props = JSON.parse(propsEl.textContent) } catch {}
+      try {
+        props = JSON.parse(propsEl.textContent)
+      } catch (err) {
+        onError?.(
+          new Error(
+            `hydrateWithBridge: failed to parse [data-mf-props] for namespace "${namespace}": ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        )
+      }
     }
 
     const root = hydrateRoot(appEl, createElement(Component, props))
     const bus = new DOMEventBus(container as HTMLElement, namespace)
 
+    const devtoolsId = nextDevtoolsId('remote')
+    emitDev({
+      kind: 'mount',
+      id: devtoolsId,
+      pkg: 'bridge',
+      namespace,
+      mode: 'remote-hydrate',
+      ts: Date.now(),
+      props,
+    })
+
     const unsubProps = bus.on<P>('propsChanged', (newProps) => {
       root.render(createElement(Component, newProps))
+      emitDev({ kind: 'props', id: devtoolsId, ts: Date.now(), props: newProps })
     })
 
     const unsubCommand = onCommand
@@ -66,6 +97,7 @@ export function hydrateWithBridge<P extends object>(
       : undefined
 
     teardowns.push(() => {
+      emitDev({ kind: 'unmount', id: devtoolsId, ts: Date.now() })
       unsubProps()
       unsubCommand?.()
       root.unmount()

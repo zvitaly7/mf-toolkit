@@ -75,9 +75,14 @@ declare const process: { env: { NODE_ENV?: string } }
 
 let _devtoolsId = 0
 
-/** Returns a fresh id for a new mounted instance. Stable across the same mount's lifetime. */
-export function nextDevtoolsId(): string {
-  return `bridge-${++_devtoolsId}`
+/**
+ * Returns a fresh id for a new mounted instance. Stable across the same mount's
+ * lifetime. The prefix keeps host ids (`bridge-N`) and remote ids (`remote-N`)
+ * in separate namespaces so a host bundle and a remote bundle on the same page
+ * don't collide on `bridge-1` and get merged into one instance by the panel.
+ */
+export function nextDevtoolsId(prefix = 'bridge'): string {
+  return `${prefix}-${++_devtoolsId}`
 }
 
 function getHook(): MFDevtoolsHook | undefined {

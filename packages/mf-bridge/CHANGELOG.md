@@ -7,6 +7,41 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.1.0] — 2026-06-18
+
+### Added
+
+- **Remote-side instrumentation for `@mf-toolkit/mf-devtools`.** `createMFEntry`,
+  `defineMFEntry`, and `hydrateWithBridge` now emit `mount` / `propsChanged` /
+  `unmount` lifecycle events to the dev-only devtools hook under the
+  `remote-entry`, `remote-define-entry`, and `remote-hydrate` modes — previously
+  reserved in the wire protocol but never emitted. The panel now shows the
+  remote half of every bridge (its mount, streamed prop updates, and teardown)
+  alongside the host half. Remote instance ids use a `remote-` prefix so they do
+  not collide with the host's `bridge-` ids. Gated behind the same
+  `process.env.NODE_ENV !== 'production'` check, so it is dead-code-eliminated in
+  production.
+
+- **`onError` option on `hydrateWithBridge`.** When the embedded
+  `<script data-mf-props>` payload is not valid JSON, the parse failure is now
+  surfaced through an optional `onError(error)` callback instead of being
+  swallowed silently. Hydration still proceeds with empty props. A malformed
+  payload usually means the SSR serializer and the client bundle disagree on the
+  props shape.
+
+### Fixed
+
+- **A rejected preload no longer poisons the cache.** `preloadMF(loader)` (and
+  the lazy-load cache-miss path) stored the loader promise without a rejection
+  handler. A transient failure (CDN blip, chunk 404) left the rejected promise
+  cached, so every later `MFBridgeLazy` mount with the same loader reused it and
+  failed instantly without a fresh network attempt — a permanent break until
+  `clearPreloadCache`. The rejected promise is now evicted from the cache
+  automatically. This also stops a `preloadMF()` with no consumer (prefetch on
+  hover, then navigate away) from surfacing as an unhandled promise rejection.
+
+---
+
 ## [1.0.2] — 2026-05-05
 
 ### Added

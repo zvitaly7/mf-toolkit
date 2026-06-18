@@ -2,6 +2,7 @@ import { createElement, Component, type ReactNode } from 'react'
 import type { ComponentProps, ComponentType } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { DOMEventBus } from './dom-event-bus.js'
+import { emitDev, nextDevtoolsId } from './_devtools.js'
 import type { RegisterFn } from './types.js'
 
 export { DOMEventBus } from './dom-event-bus.js'
@@ -141,6 +142,8 @@ export function createMFEntry<T extends ComponentType<any>>(
     const emit = (type: string, payload?: unknown): void =>
       bus.send('event', { type, payload })
 
+    const devtoolsId = nextDevtoolsId('remote')
+
     // Track command subscriptions so they are auto-cleaned up on unmount.
     const commandUnsubs: Array<() => void> = []
     const onCommand = (handler: (type: string, payload: unknown) => void): () => void => {
@@ -153,6 +156,16 @@ export function createMFEntry<T extends ComponentType<any>>(
     }
 
     onBeforeMount?.({ mountPointer, shadowRoot, props, namespace, emit, onCommand })
+
+    emitDev({
+      kind: 'mount',
+      id: devtoolsId,
+      pkg: 'bridge',
+      namespace,
+      mode: 'remote-entry',
+      ts: Date.now(),
+      props,
+    })
 
     // errorKey increments on every propsChanged to reset the boundary so a
     // recovered component can render again after a previous crash.
@@ -197,10 +210,12 @@ export function createMFEntry<T extends ComponentType<any>>(
     const unsubscribe = bus.on<ComponentProps<T>>('propsChanged', (newProps) => {
       errorKey++
       render(newProps)
+      emitDev({ kind: 'props', id: devtoolsId, ts: Date.now(), props: newProps })
     })
 
     return () => {
       onBeforeUnmount?.({ mountPointer })
+      emitDev({ kind: 'unmount', id: devtoolsId, ts: Date.now() })
       unsubscribe()
       commandUnsubs.forEach((fn) => fn())
       const e = entry!

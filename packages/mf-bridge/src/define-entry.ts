@@ -1,4 +1,5 @@
 import { DOMEventBus } from './dom-event-bus.js'
+import { emitDev, nextDevtoolsId } from './_devtools.js'
 import type { RegisterFn } from './types.js'
 
 // ─── defineMFEntry ────────────────────────────────────────────────────────────
@@ -98,13 +99,25 @@ export function defineMFEntry<P extends object = object, I = unknown>(config: {
       return unsub
     }
 
+    const devtoolsId = nextDevtoolsId('remote')
     const instance = config.mount({ mountPointer, shadowRoot, props, namespace, emit, onCommand })
+    emitDev({
+      kind: 'mount',
+      id: devtoolsId,
+      pkg: 'bridge',
+      namespace,
+      mode: 'remote-define-entry',
+      ts: Date.now(),
+      props,
+    })
 
     const unsubscribe = bus.on<P>('propsChanged', (newProps) => {
       config.update?.(instance, newProps)
+      emitDev({ kind: 'props', id: devtoolsId, ts: Date.now(), props: newProps })
     })
 
     return () => {
+      emitDev({ kind: 'unmount', id: devtoolsId, ts: Date.now() })
       unsubscribe()
       commandUnsubs.forEach((fn) => fn())
       config.unmount(instance, mountPointer)

@@ -55,6 +55,39 @@ function buildSSRFragment(namespace: string, props: object, staticHtml = '<span>
 // ─── hydrateWithBridge ───────────────────────────────────────────────────────
 
 describe('hydrateWithBridge', () => {
+  it('reports malformed [data-mf-props] JSON via onError instead of swallowing it', async () => {
+    // A fragment whose props script holds invalid JSON.
+    const host = document.createElement('div')
+    host.setAttribute('data-mf-namespace', 'broken')
+    const propsScript = document.createElement('script')
+    propsScript.type = 'application/json'
+    propsScript.setAttribute('data-mf-props', '')
+    propsScript.textContent = '{ orderId: 42, }' // not valid JSON
+    const app = document.createElement('div')
+    app.setAttribute('data-mf-app', '')
+    app.innerHTML = '<span>ssr</span>'
+    host.appendChild(propsScript)
+    host.appendChild(app)
+    document.body.appendChild(host)
+
+    function Widget(props: { orderId?: string }) {
+      return createElement('span', { 'data-testid': 'widget' }, props.orderId ?? 'no-props')
+    }
+
+    const onError = vi.fn()
+    await act(async () => {
+      hydrateWithBridge(Widget, { namespace: 'broken', onError })
+    })
+
+    // The parse failure is surfaced, with the namespace for context...
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error)
+    expect((onError.mock.calls[0][0] as Error).message).toContain('broken')
+    // ...and hydration still proceeds with empty props rather than crashing.
+    expect(host.querySelector('[data-testid="widget"]')?.textContent).toBe('no-props')
+    host.remove()
+  })
+
   it('hydrates the [data-mf-app] element with the component and initial props', async () => {
     const host = buildSSRFragment('checkout', { orderId: '42' })
 

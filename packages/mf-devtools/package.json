@@ -1,6 +1,6 @@
 {
   "name": "@mf-toolkit/mf-devtools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Chrome DevTools extension for inspecting @mf-toolkit/mf-bridge and @mf-toolkit/mf-ssr at runtime — list mounted MFs, props snapshots, event/command flow, fetch lifecycle.",
   "author": "Vitaly Zheltko",

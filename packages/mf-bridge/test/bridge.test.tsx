@@ -317,12 +317,15 @@ describe('onError retry', () => {
 
   it('bypasses preload cache on manual retry', async () => {
     let attempt = 0
+    let allowSuccess = false
     const loader = () => {
       attempt++
-      return attempt === 1 ? Promise.reject(new Error('fail')) : Promise.resolve(labelRegister)
+      return allowSuccess ? Promise.resolve(labelRegister) : Promise.reject(new Error('fail'))
     }
 
-    // Warm the cache with the failing promise
+    // Warm the cache; the rejected promise is evicted on failure (so the first
+    // render performs its own fresh load), and the manual retry below must
+    // bypass the cache to invoke the loader yet again.
     preloadMF(loader)
 
     let retryFn!: () => void
@@ -336,11 +339,15 @@ describe('onError retry', () => {
       }))
     })
 
-    expect(attempt).toBe(1)
+    expect(onError).toHaveBeenCalled()
+    // How many times the loader ran during the initial render depends on
+    // eviction-microtask timing; what matters is that the retry adds exactly one.
+    const attemptsBeforeRetry = attempt
 
+    allowSuccess = true
     await act(async () => { retryFn() })
 
-    expect(attempt).toBe(2)
+    expect(attempt).toBe(attemptsBeforeRetry + 1)
     expect(screen.getByTestId('label').textContent).toBe('fresh')
   })
 })
@@ -625,6 +632,31 @@ describe('preloadMF', () => {
     preloadMF(loader)
 
     expect(callCount).toBe(1)
+  })
+
+  it('evicts a rejected promise so a later mount retries the network instead of failing', async () => {
+    let attempt = 0
+    const loader = () => {
+      attempt++
+      return attempt === 1
+        ? Promise.reject(new Error('transient CDN blip'))
+        : Promise.resolve(labelRegister)
+    }
+
+    // Prefetch — the first attempt rejects. The rejected promise must NOT stay
+    // cached, otherwise every later mount reads it and fails without a network try.
+    preloadMF(loader)
+    // Let the rejection (and the cache eviction) settle.
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+
+    // Fresh mount, default retryCount (0). With the cache poisoned this renders
+    // the (empty) fallback forever; with eviction it calls loader() again and mounts.
+    await act(async () => {
+      render(createElement(MFBridgeLazy, { register: loader, props: { text: 'recovered' } }))
+    })
+
+    expect(attempt).toBe(2)
+    expect(screen.getByTestId('label').textContent).toBe('recovered')
   })
 })
 

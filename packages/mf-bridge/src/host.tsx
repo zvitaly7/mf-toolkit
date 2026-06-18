@@ -41,6 +41,15 @@ function setPreloadCache(
     preloadCache.delete(preloadCache.keys().next().value as () => Promise<RegisterFn<any>>)
   }
   preloadCache.set(loader, promise)
+  // Evict on rejection. A transient failure (CDN blip, chunk 404) must not
+  // poison the cache — otherwise every later mount reads the rejected promise
+  // and fails instantly without a fresh network attempt. The guard keeps a
+  // newer entry for the same loader (e.g. after a retry) intact. Attaching the
+  // handler here also means a `preloadMF()` with no consumer never surfaces as
+  // an unhandled promise rejection.
+  promise.catch(() => {
+    if (preloadCache.get(loader) === promise) preloadCache.delete(loader)
+  })
 }
 
 
