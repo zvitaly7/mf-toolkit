@@ -168,20 +168,41 @@ function fetchFragmentHtml<P>(
 const FRAGMENT_CACHE_MAX = 50
 const fragmentCache = new Map<string, TaggedPromise<string>>()
 
-/** @internal Test-only: reset the url-mode fetch cache between test cases. */
+/** @internal Test-only: reset the url-mode fetch and loader caches between test cases. */
 export function __clearFragmentCache(): void {
   fragmentCache.clear()
+  lazyCache.clear()
 }
 
 /**
  * Evict one or all entries from the fragment cache.
  *
  * Use after a remote recovers from an error so the next render gets a fresh
- * fetch instead of the cached rejected promise. Pass a URL + props key to
- * evict a specific entry, or call with no arguments to flush the whole cache.
+ * fetch instead of the cached rejected promise.
+ *
+ * - Call with no arguments to flush the whole cache.
+ * - Pass `url` + `props` (and the same `timeout` / `cacheKey` used at render,
+ *   if non-default) to evict a single entry — useful on a long-lived SSR/edge
+ *   server where flushing everything would re-fetch all healthy fragments too.
+ *
+ * ```ts
+ * clearFragmentCache()                                  // flush all
+ * clearFragmentCache('https://checkout/fragment', { orderId })  // one entry
+ * ```
  */
-export function clearFragmentCache(): void {
-  fragmentCache.clear()
+export function clearFragmentCache<P extends object>(
+  url?: string,
+  props?: P,
+  opts?: { timeout?: number; cacheKey?: string },
+): void {
+  if (url === undefined) {
+    fragmentCache.clear()
+    lazyCache.clear()
+    return
+  }
+  const { timeout = 3000, cacheKey } = opts ?? {}
+  const key = `${url}?${safeJsonStringify(props ?? {})}#${timeout}#${cacheKey ?? ''}`
+  fragmentCache.delete(key)
 }
 
 interface GetFragmentOpts extends FetchOpts {
@@ -331,7 +352,13 @@ function UrlMode<P extends object>({
 // every retry and never resolve. A module-level cache keeps the lazy stable
 // across retries. Same contract as `MFBridgeLazy.register`: pass a stable
 // loader reference (module-level or wrapped in `useCallback`).
-const lazyCache = new WeakMap<
+//
+// A bounded Map (not a WeakMap) so `clearFragmentCache()` can reset it: once a
+// loader rejects, React.lazy memoizes the rejection and replays it on every
+// later render, so a transient loader failure would otherwise stay broken
+// until a full page reload. Bounded the same way as the fragment cache.
+const LAZY_CACHE_MAX = 50
+const lazyCache = new Map<
   () => Promise<ComponentType<object>>,
   LazyExoticComponent<ComponentType<object>>
 >()
@@ -343,6 +370,10 @@ function getLazy<P extends object>(
   const key = loader as unknown as () => Promise<ComponentType<object>>
   const cached = lazyCache.get(key)
   if (cached) return cached as unknown as LazyExoticComponent<ComponentType<P>>
+
+  if (lazyCache.size >= LAZY_CACHE_MAX && !lazyCache.has(key)) {
+    lazyCache.delete(lazyCache.keys().next().value as () => Promise<ComponentType<object>>)
+  }
 
   const created = lazy<ComponentType<P>>(() => {
     let timerId: ReturnType<typeof setTimeout> | undefined

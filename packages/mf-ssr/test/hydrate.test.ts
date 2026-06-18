@@ -99,6 +99,27 @@ describe('hydrateRemote', () => {
     )
   })
 
+  it('reports malformed props JSON via onError while still hydrating with empty props', () => {
+    const wrapper = document.createElement('div')
+    wrapper.setAttribute('data-mf-ssr', 'bad2')
+    wrapper.innerHTML = `
+      <script type="application/json" data-mf-props>NOT_JSON</script>
+      <div data-mf-app></div>
+    `
+    document.body.appendChild(wrapper)
+
+    function W() { return null }
+    const onError = vi.fn()
+    hydrateRemote(W, { id: 'bad2', onError })
+
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error)
+    expect(hydrateRoot).toHaveBeenCalledWith(
+      wrapper.querySelector('[data-mf-app]'),
+      createElement(W, {}),
+    )
+  })
+
   it('does nothing when no matching wrappers exist', () => {
     function W() { return null }
     hydrateRemote(W, { id: 'nonexistent' })

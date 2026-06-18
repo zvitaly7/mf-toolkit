@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import { createElement, useState } from 'react'
-import { MFBridgeSSR, __clearFragmentCache, preloadFragment } from '../src/host.js'
+import { MFBridgeSSR, __clearFragmentCache, preloadFragment, clearFragmentCache } from '../src/host.js'
 import { DOMEventBus } from '@mf-toolkit/mf-bridge'
 
 afterEach(() => {
@@ -499,6 +499,60 @@ describe('MFBridgeSSR — retryCount', () => {
 })
 
 // ─── preloadFragment ──────────────────────────────────────────────────────────
+
+describe('clearFragmentCache', () => {
+  it('evicts only the matching entry when called with url + props', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, text: () => Promise.resolve(FRAG_HTML),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    // Warm two distinct entries.
+    preloadFragment('http://aaa/', { n: 1 })
+    preloadFragment('http://bbb/', { n: 2 })
+    await act(async () => {})
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    // Evict only the A entry.
+    clearFragmentCache('http://aaa/', { n: 1 })
+
+    // Re-probe both: A misses (re-fetch), B still cached (no fetch).
+    preloadFragment('http://aaa/', { n: 1 })
+    preloadFragment('http://bbb/', { n: 2 })
+    await act(async () => {})
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('lets loader mode recover after a transient failure when cleared', async () => {
+    let attempt = 0
+    function Widget() { return createElement('span', { 'data-testid': 'widget' }, 'ok') }
+    const loader = () => {
+      attempt++
+      return attempt === 1 ? Promise.reject(new Error('transient')) : Promise.resolve(Widget)
+    }
+
+    // First render → loader rejects → errorFallback. The failed lazy is cached.
+    const r1 = render(createElement(MFBridgeSSR, {
+      loader, props: {},
+      errorFallback: createElement('span', { 'data-testid': 'err' }, 'failed'),
+    }))
+    await r1.findByTestId('err')
+    expect(attempt).toBe(1)
+    r1.unmount()
+    cleanup()
+
+    // Reset caches, then re-render with the SAME loader ref. Without clearing
+    // the lazy cache the failed lazy replays forever; clearing lets it retry.
+    clearFragmentCache()
+
+    const r2 = render(createElement(MFBridgeSSR, {
+      loader, props: {},
+      errorFallback: createElement('span', { 'data-testid': 'err' }, 'failed'),
+    }))
+    expect((await r2.findByTestId('widget')).textContent).toBe('ok')
+    expect(attempt).toBe(2)
+  })
+})
 
 describe('preloadFragment', () => {
   it('warms the cache so MFBridgeSSR makes no additional fetch', async () => {

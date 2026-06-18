@@ -20,7 +20,18 @@ export function hydrateRemote<P extends object>(
 
     let props: P = {} as P
     if (propsEl?.textContent) {
-      try { props = JSON.parse(propsEl.textContent) } catch {}
+      try {
+        props = JSON.parse(propsEl.textContent)
+      } catch (err) {
+        const id = wrapper.getAttribute('data-mf-ssr') ?? ''
+        opts?.onError?.(
+          new Error(
+            `hydrateRemote: failed to parse [data-mf-props]${id ? ` for "${id}"` : ''}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        )
+      }
     }
 
     hydrateRoot(appEl as HTMLElement, createElement(Component, props))

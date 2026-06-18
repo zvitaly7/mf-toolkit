@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createElement } from 'react'
 import { createMFReactFragment } from '../src/react-fragment.js'
 
@@ -100,6 +100,39 @@ describe('createMFReactFragment', () => {
     expect(scriptBlock).not.toContain('\u2029')
     expect(scriptBlock).toContain('\\u2028')
     expect(scriptBlock).toContain('\\u2029')
+  })
+})
+
+describe('createMFReactFragment — error handling', () => {
+  it('returns 500 and calls onError when the component throws during render', async () => {
+    function Boom(): never { throw new Error('render boom') }
+    const onError = vi.fn()
+    const handler = createMFReactFragment(Boom as never, { onError })
+
+    const res = await handler(makeRequest())
+
+    expect(res.status).toBe(500)
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error)
+  })
+
+  it('calls onError but still renders (200) when the ?props= query is malformed', async () => {
+    function Widget({ n = 7 }: { n?: number }) {
+      return createElement('span', null, String(n))
+    }
+    const onError = vi.fn()
+    const handler = createMFReactFragment(Widget, { onError })
+
+    const url = new URL('/frag', 'http://localhost')
+    url.searchParams.set('props', encodeURIComponent('{not valid json'))
+    const res = await handler(new Request(url.toString()))
+
+    expect(res.status).toBe(200)
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(Error)
+    // Falls back to default props.
+    const html = await bodyText(res)
+    expect(html).toContain('7')
   })
 })
 

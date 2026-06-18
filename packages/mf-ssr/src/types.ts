@@ -112,4 +112,12 @@ export type MFBridgeSSRProps<P extends object = object> =
 export interface HydrateRemoteOpts {
   id?: string
   selector?: string
+  /**
+   * Called when an embedded `<script data-mf-props>` payload cannot be parsed
+   * as JSON. The wrapper is still hydrated with empty props, but the error is
+   * surfaced here for observability instead of being swallowed silently — a
+   * malformed payload usually means the SSR serializer and the client bundle
+   * disagree on the props shape.
+   */
+  onError?: (error: Error) => void
 }

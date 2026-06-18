@@ -18,6 +18,13 @@ export interface CreateMFReactFragmentOpts {
    * `'Accept-Language'` or `'Accept-Encoding'`.
    */
   vary?: string
+  /**
+   * Called when the fragment cannot be produced — either the `?props=` query
+   * is malformed JSON (the fragment still renders with empty props) or the
+   * component throws during server render (a `500` response is returned).
+   * Use for error observability (Sentry, DataDog, etc.).
+   */
+  onError?: (error: Error) => void
 }
 
 export function createMFReactFragment<P extends object>(
@@ -32,7 +39,17 @@ export function createMFReactFragment<P extends object>(
     const rawProps = url.searchParams.get('props')
     let props: P = {} as P
     if (rawProps) {
-      try { props = JSON.parse(decodeURIComponent(rawProps)) } catch {}
+      try {
+        props = JSON.parse(decodeURIComponent(rawProps))
+      } catch (err) {
+        opts?.onError?.(
+          new Error(
+            `createMFReactFragment: failed to parse ?props= for "${fragmentId}": ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        )
+      }
     }
 
     const safeJson = safeJsonStringify(props)
@@ -52,12 +69,23 @@ export function createMFReactFragment<P extends object>(
       )
     }
 
-    const stream = await renderToReadableStream(createElement(FragmentShell))
-    const headers: Record<string, string> = {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': cacheControl,
+    try {
+      const stream = await renderToReadableStream(createElement(FragmentShell))
+      const headers: Record<string, string> = {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': cacheControl,
+      }
+      if (opts?.vary) headers['Vary'] = opts.vary
+      return new Response(stream, { headers })
+    } catch (err) {
+      // Shell render threw before the first flush — surface it and return a
+      // 500 instead of letting the handler's promise reject (which would crash
+      // the remote's request handler or leak a stack trace to the client).
+      opts?.onError?.(err instanceof Error ? err : new Error(String(err)))
+      return new Response('Internal Server Error', {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+      })
     }
-    if (opts?.vary) headers['Vary'] = opts.vary
-    return new Response(stream, { headers })
   }
 }

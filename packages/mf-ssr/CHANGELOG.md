@@ -7,6 +7,36 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.1.0] — 2026-06-18
+
+### Added
+
+- **`onError` on `hydrateRemote` and `createMFReactFragment`.** Malformed
+  `[data-mf-props]` (client) / `?props=` (server) JSON is now surfaced through an
+  optional `onError` callback instead of being swallowed silently; the component
+  still renders with empty props. A malformed payload usually means the SSR
+  serializer and the client bundle disagree on the props shape.
+
+- **Targeted `clearFragmentCache(url, props, opts?)`.** Evict a single
+  fragment-cache entry instead of flushing the whole cache — avoids re-fetching
+  every healthy fragment on a long-lived SSR/edge server after one remote
+  recovers. The previous JSDoc described this form, but the implementation only
+  ever cleared the entire cache; calling with no arguments still flushes all.
+
+### Fixed
+
+- **`createMFReactFragment` returns `500` on render failure.** If the component
+  throws during server render, the handler now returns a `500` response (and
+  calls `onError`) instead of rejecting the request promise — which previously
+  could crash the remote's request handler or leak a stack trace to the client.
+
+- **Loader-mode failures can recover.** A rejected `React.lazy` was cached
+  indefinitely (keyed by loader reference) with no reset path, so a transient
+  loader timeout/failure stayed broken until a full page reload. The loader
+  cache is now a bounded `Map` that `clearFragmentCache()` also resets.
+
+---
+
 ## [1.0.2] — 2026-05-05
 
 Version bumped to align with [`@mf-toolkit/mf-bridge@1.0.2`](../mf-bridge/CHANGELOG.md);
