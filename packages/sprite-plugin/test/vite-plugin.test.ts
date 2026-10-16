@@ -4,7 +4,7 @@ import { readFile, rm } from 'node:fs/promises';
 import { mfSpriteVitePlugin } from '../src/plugins/vite.js';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures');
-const OUTPUT_DIR = join(import.meta.dirname, 'fixtures/output');
+const OUTPUT_DIR = join(import.meta.dirname, 'fixtures/output/vite-plugin');
 const OUTPUT_FILE = join(OUTPUT_DIR, 'sprite.ts');
 
 const BASE_OPTIONS = {

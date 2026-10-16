@@ -4,7 +4,7 @@ import { readFile, rm } from 'node:fs/promises';
 import { mfSpriteRollupPlugin } from '../src/plugins/rollup.js';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures');
-const OUTPUT_DIR = join(import.meta.dirname, 'fixtures/output');
+const OUTPUT_DIR = join(import.meta.dirname, 'fixtures/output/rollup-plugin');
 const OUTPUT_FILE = join(OUTPUT_DIR, 'sprite.ts');
 
 const BASE_OPTIONS = {

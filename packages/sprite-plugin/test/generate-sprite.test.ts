@@ -4,7 +4,7 @@ import { readFile, rm } from 'node:fs/promises';
 import { generateSprite } from '../src/generator/generate-sprite.js';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures');
-const OUTPUT_DIR = join(import.meta.dirname, 'fixtures/output');
+const OUTPUT_DIR = join(import.meta.dirname, 'fixtures/output/generate-sprite');
 const OUTPUT_FILE = join(OUTPUT_DIR, 'sprite.ts');
 
 afterEach(async () => {
