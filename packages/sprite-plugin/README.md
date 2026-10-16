@@ -297,7 +297,8 @@ interface SpritePluginOptions {
     multipass?: boolean;       // default: true
   };
 
-  // Root SVG attributes to copy onto each generated <symbol>.
+  // Root SVG attributes to copy onto each generated <symbol>,
+  // e.g. ['fill', 'stroke', 'stroke-width'] for outline icon sets.
   // viewBox is always preserved; structural attributes such as id, width,
   // height, and XML namespaces are always excluded. Default: []
   symbolAttributes?: string[];
@@ -348,16 +349,23 @@ Every SVG goes through [SVGO](https://github.com/svg/svgo) and additional proces
 | Path data | Minified |
 
 Root `<svg>` attributes are not copied to generated `<symbol>` elements by default. Opt in to
-specific rendering attributes when needed:
+specific rendering attributes when needed.
+
+Outline icon sets (Lucide, Feather, Tabler and similar) declare their styling on the root
+`<svg>` — `fill="none"`, `stroke="currentColor"`, `stroke-width` and so on. SVGO also strips
+child attributes that repeat the root value, so without copying the root attributes these icons
+render as filled shapes. Copy the whole set, not just `fill` — with `fill` alone the icons have
+neither fill nor stroke and become invisible:
 
 ```ts
 mfSpriteVitePlugin({
   // ...
-  symbolAttributes: ['fill', 'preserveAspectRatio'],
+  symbolAttributes: ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'],
 });
 ```
 
-`viewBox` is always preserved. `id`, `width`, `height`, and XML namespace attributes cannot be copied.
+`viewBox` is always preserved. `id`, `width`, `height`, and XML namespace attributes cannot be
+copied; listing them logs a warning.
 
 The `currentColor` replacement means your icons automatically inherit the text color of their parent element. Set `color: red` on the parent — the icon turns red.
 

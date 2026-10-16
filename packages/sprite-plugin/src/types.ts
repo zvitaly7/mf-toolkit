@@ -103,11 +103,12 @@ export interface SpritePluginOptions {
   /**
    * Root SVG attributes to copy onto each generated <symbol>.
    * viewBox is always preserved; id, width, height, and XML namespace
-   * attributes are always excluded.
+   * attributes are always excluded (listing them logs a warning).
    * @default []
    *
    * @example
-   * symbolAttributes: ['fill', 'preserveAspectRatio']
+   * // Outline icon sets (Lucide, Feather, Tabler) style the root <svg>
+   * symbolAttributes: ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin']
    */
   symbolAttributes?: string[];
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { generateSprite } from '../src/generator/generate-sprite.js';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures');
@@ -42,9 +42,13 @@ describe('generateSprite', () => {
   });
 
   it('copies configured root SVG attributes onto symbols', async () => {
+    const sourceDir = join(OUTPUT_DIR, 'src');
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, 'app.tsx'), "import { OutlineIcon } from '@my-ui/icons/outline';\n");
+
     await generateSprite({
       iconsDir: join(FIXTURES, 'icons'),
-      sourceDirs: [join(FIXTURES, 'src')],
+      sourceDirs: [sourceDir],
       importPattern: /@my-ui\/icons\/(.+)/,
       output: OUTPUT_FILE,
       extensions: ['.tsx'],
@@ -52,7 +56,7 @@ describe('generateSprite', () => {
     });
 
     const content = await readFile(OUTPUT_FILE, 'utf-8');
-    expect(content).toContain('<symbol id="search" viewBox="0 0 24 24" fill="none">');
+    expect(content).toContain('<symbol id="outline" viewBox="0 0 24 24" fill="none">');
   });
 
   it('creates output directory if not exists', async () => {

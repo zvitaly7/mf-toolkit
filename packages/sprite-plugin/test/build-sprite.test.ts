@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { join } from 'node:path';
 import { buildSprite } from '../src/generator/build-sprite.js';
 
@@ -70,31 +70,47 @@ describe('buildSprite', () => {
   });
 
   it('does not copy optional root SVG attributes by default', async () => {
-    const result = await buildSprite(ICONS_DIR, ['search']);
+    const result = await buildSprite(ICONS_DIR, ['outline']);
 
-    expect(result.svg).toContain('<symbol id="search" viewBox="0 0 24 24">');
-    expect(result.svg).not.toMatch(/<symbol[^>]+\sfill=/);
+    expect(result.svg).toContain('<symbol id="outline" viewBox="0 0 24 24">');
   });
 
   it('copies configured root SVG attributes onto the symbol', async () => {
-    const result = await buildSprite(ICONS_DIR, ['search'], false, undefined, ['fill']);
+    const result = await buildSprite(ICONS_DIR, ['outline'], false, undefined, [
+      'fill',
+      'stroke',
+      'stroke-width',
+      'stroke-linecap',
+      'stroke-linejoin',
+    ]);
 
     expect(result.svg).toContain(
-      '<symbol id="search" viewBox="0 0 24 24" fill="none">',
+      '<symbol id="outline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">',
     );
   });
 
-  it('never copies structural root SVG attributes onto the symbol', async () => {
+  it('copies only the configured root SVG attributes', async () => {
+    const result = await buildSprite(ICONS_DIR, ['outline'], false, undefined, ['fill']);
+
+    expect(result.svg).toContain('<symbol id="outline" viewBox="0 0 24 24" fill="none">');
+  });
+
+  it('never copies structural root SVG attributes and warns about them', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
     const result = await buildSprite(
       ICONS_DIR,
-      ['search'],
+      ['outline'],
       false,
       undefined,
-      ['id', 'viewBox', 'width', 'height', 'xmlns'],
+      ['id', 'viewBox', 'width', 'height', 'xmlns', 'fill'],
     );
 
-    expect(result.svg).toContain('<symbol id="search" viewBox="0 0 24 24">');
-    expect(result.svg).not.toMatch(/<symbol[^>]+(?:width|height|xmlns)=/);
+    expect(result.svg).toContain('<symbol id="outline" viewBox="0 0 24 24" fill="none">');
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(warnSpy.mock.calls[0][0]).toContain('id, viewBox, width, height, xmlns');
+
+    warnSpy.mockRestore();
   });
 
   it('wraps each icon in a <symbol> element', async () => {
